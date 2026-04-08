@@ -9,7 +9,7 @@ using Jitter2.LinearMath;
 namespace Jitter2.Collision.Shapes;
 
 /// <summary>
-/// Wraps any shape and allows to orientate and translate it.
+/// Represents a shape wrapper defined by an original shape and an affine transformation (translation and linear map).
 /// </summary>
 public class TransformedShape : RigidBodyShape
 {
@@ -25,29 +25,44 @@ public class TransformedShape : RigidBodyShape
     private TransformationType type;
 
     /// <summary>
-    /// Constructs a transformed shape through an affine transformation define by
+    /// Constructs a transformed shape through an affine transformation defined by
     /// a linear map and a translation.
     /// </summary>
-    /// <param name="shape">The original shape which should be transformed.</param>
-    /// <param name="translation">Shape is translated by this vector.</param>
-    /// <param name="transform">A linear map (may include sheer and scale) of the transformation.</param>
     public TransformedShape(RigidBodyShape shape, in JVector translation, in JMatrix transform)
     {
         OriginalShape = shape;
         this.translation = translation;
-        transformation = transform;
+        this.transformation = transform;
 
         AnalyzeTransformation();
         UpdateWorldBoundingBox();
     }
 
+    /// <summary>
+    /// Constructs a transformed shape with a translation (offset), assuming identity rotation/scale.
+    /// </summary>
     public TransformedShape(RigidBodyShape shape, JVector translation) :
         this(shape, translation, JMatrix.Identity)
     {
     }
 
+    /// <summary>
+    /// Constructs a transformed shape with a linear transformation (rotation, scale, or shear),
+    /// assuming zero translation.
+    /// </summary>
+    public TransformedShape(RigidBodyShape shape, JMatrix transform) :
+        this(shape, JVector.Zero, transform)
+    {
+    }
+
+    /// <summary>
+    /// Gets the original shape that is being transformed.
+    /// </summary>
     public RigidBodyShape OriginalShape { get; }
 
+    /// <summary>
+    /// Gets or sets the translation applied to the shape.
+    /// </summary>
     public JVector Translation
     {
         get => translation;
@@ -71,6 +86,9 @@ public class TransformedShape : RigidBodyShape
         }
     }
 
+    /// <summary>
+    /// Gets or sets the linear transformation (rotation, scale, or shear) applied to the shape.
+    /// </summary>
     public JMatrix Transformation
     {
         get => transformation;
@@ -82,6 +100,7 @@ public class TransformedShape : RigidBodyShape
         }
     }
 
+    /// <inheritdoc/>
     public override void SupportMap(in JVector direction, out JVector result)
     {
         if (type == TransformationType.Identity)
@@ -98,6 +117,7 @@ public class TransformedShape : RigidBodyShape
         }
     }
 
+    /// <inheritdoc/>
     public override void CalculateBoundingBox(in JQuaternion orientation, in JVector position, out JBoundingBox box)
     {
         if (type == TransformationType.General)
@@ -113,19 +133,37 @@ public class TransformedShape : RigidBodyShape
         }
     }
 
+    /// <inheritdoc/>
     public override void GetCenter(out JVector point)
     {
         OriginalShape.GetCenter(out point);
         point = JVector.Transform(point, transformation) + translation;
     }
 
+    /// <inheritdoc/>
     public override void CalculateMassInertia(out JMatrix inertia, out JVector com, out Real mass)
     {
         OriginalShape.CalculateMassInertia(out JMatrix originalInertia, out JVector originalCom, out mass);
 
         com = JVector.Transform(originalCom, transformation) + translation;
-        inertia = transformation * JMatrix.Multiply(originalInertia, JMatrix.Transpose(transformation));
-        JMatrix pat = mass * (JMatrix.Identity * translation.LengthSquared() - JVector.Outer(translation, translation));
+
+        Real det = MathR.Abs(transformation.Determinant());
+        mass *= det;
+
+        // The inertia tensor I is related to the second moment matrix C by: I = trace(C)·E - C
+        // Under transformation T, the second moment transforms as: C' = |det(T)| · T · C · Tᵀ
+        // We recover C from I: C = (trace(I)/2)·E - I
+        Real halfTrace = originalInertia.Trace() * (Real)0.5;
+        JMatrix secondMoment = halfTrace * JMatrix.Identity - originalInertia;
+
+        // Transform second moment matrix
+        JMatrix transformedSecondMoment = det * transformation * secondMoment * JMatrix.Transpose(transformation);
+
+        // Convert back to inertia tensor
+        inertia = transformedSecondMoment.Trace() * JMatrix.Identity - transformedSecondMoment;
+
+        // Apply parallel axis theorem for translation
+        JMatrix pat = mass * (JMatrix.Identity * com.LengthSquared() - JVector.Outer(com, com));
         inertia += pat;
     }
 }

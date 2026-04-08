@@ -6,6 +6,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Jitter2.Collision;
 using Jitter2.Collision.Shapes;
@@ -16,20 +17,37 @@ namespace Jitter2;
 
 public sealed partial class World
 {
+    /// <summary>
+    /// Thrown when the narrow phase encounters a pair of proxy types it cannot process.
+    /// </summary>
+    /// <remarks>
+    /// This typically indicates that non-<see cref="RigidBodyShape"/> proxies were inserted into the
+    /// world's <see cref="DynamicTree"/>. Use <see cref="BroadPhaseFilter"/> to filter such pairs,
+    /// or ensure only supported proxy types are added.
+    /// </remarks>
     public class InvalidCollisionTypeException(Type proxyA, Type proxyB) : Exception(
         $"Don't know how to handle collision between {proxyA} and {proxyB}." +
         $" Register a BroadPhaseFilter to handle and/or filter out these collision types.");
 
     /// <summary>
-    /// Specifies an implementation of the <see cref="INarrowPhaseFilter"/> to be used in collision detection.
+    /// Hook into the narrow-phase collision detection pipeline.
     /// The default instance is of type <see cref="TriangleEdgeCollisionFilter"/>.
     /// </summary>
+    /// <remarks>
+    /// Use this to intercept collisions after contact generation, modify contact data,
+    /// or implement custom collision responses. When <see cref="Step(Real, bool)"/> is called
+    /// with <c>multiThread=true</c>, this may be invoked concurrently. Implementations must be thread-safe.
+    /// </remarks>
     public INarrowPhaseFilter? NarrowPhaseFilter { get; set; } = new TriangleEdgeCollisionFilter();
 
     /// <summary>
-    /// Specifies an implementation of the <see cref="IBroadPhaseFilter"/> to be used in collision detection.
-    /// The default value is null.
+    /// Hook into the broadphase collision detection pipeline. The default value is null.
     /// </summary>
+    /// <remarks>
+    /// Use this to intercept shape pairs before narrow-phase detection, implement custom collision layers,
+    /// or handle collisions for custom proxy types. When <see cref="Step(Real, bool)"/> is called
+    /// with <c>multiThread=true</c>, this may be invoked concurrently. Implementations must be thread-safe.
+    /// </remarks>
     public IBroadPhaseFilter? BroadPhaseFilter { get; set; }
 
     /// <summary>
@@ -46,17 +64,18 @@ public sealed partial class World
     /// slowdown, ranging from 0 (where the body stops immediately during this frame) to 1 (where the body and the
     /// obstacle just touch after the next velocity integration). A value below 1 is preferred, as the leftover velocity
     /// might be enough to trigger another speculative contact in the next frame.
+    /// Default value: 0.9.
     /// </summary>
     public Real SpeculativeRelaxationFactor { get; set; } = (Real)0.9;
 
     /// <summary>
-    /// Speculative contacts are generated when the velocity towards an obstacle exceeds
+    /// Speculative contacts are generated when the relative velocity between two bodies exceeds
     /// the threshold value. To prevent bodies with a diameter of D from tunneling through thin walls, this
     /// threshold should be set to approximately D / timestep, e.g., 100 for a unit cube and a
     /// timestep of 0.01.
+    /// Default value: 10.0.
     /// </summary>
-    public Real SpeculativeVelocityThreshold { get; set; } =(Real)10.0;
-
+    public Real SpeculativeVelocityThreshold { get; set; } = (Real)10.0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Detect(IDynamicTreeProxy proxyA, IDynamicTreeProxy proxyB)
@@ -173,7 +192,7 @@ public sealed partial class World
         {
             memContacts.ResizeLock.EnterReadLock();
             arbiter.Handle.Data.AddContact(point1, point2, normal);
-            arbiter.Handle.Data.Mode &= ~removeFlags;
+            arbiter.Handle.Data.ResetMode(removeFlags);
             memContacts.ResizeLock.ExitReadLock();
         }
     }
@@ -211,6 +230,8 @@ public sealed partial class World
             // Do not add contacts while contacts might be resized
             memContacts.ResizeLock.EnterReadLock();
 
+            arbiter.Handle.Data.ResetMode(removeFlags);
+
             for (int e = 0; e < manifold.Count; e++)
             {
                 JVector mfA = manifold.ManifoldA[e];
@@ -220,7 +241,6 @@ public sealed partial class World
                 if (nd < (Real)0.0) continue;
 
                 arbiter.Handle.Data.AddContact(mfA, mfB, normal);
-                arbiter.Handle.Data.Mode &= ~removeFlags;
             }
 
             memContacts.ResizeLock.ExitReadLock();
@@ -257,6 +277,28 @@ public sealed partial class World
     {
         GetOrCreateArbiter(id0, id1, body1, body2, out Arbiter arbiter);
         RegisterContact(arbiter, point1, point2, normal, removeFlags);
+    }
+
+    /// <summary>
+    /// Retrieves an existing <see cref="Arbiter"/> instance for the given pair of IDs.
+    /// </summary>
+    /// <param name="id0">The first identifier (e.g., shape ID).</param>
+    /// <param name="id1">The second identifier.</param>
+    /// <param name="arbiter">When this method returns true, contains the arbiter; otherwise, null.</param>
+    /// <returns><see langword="true"/> if an arbiter exists for the ordered ID pair; otherwise, <see langword="false"/>.</returns>
+    /// <remarks>
+    /// The order of <paramref name="id0"/> and <paramref name="id1"/> matters.
+    /// For arbiters created by the engine, <paramref name="id0"/> &lt; <paramref name="id1"/> holds
+    /// for <see cref="RigidBodyShape"/>s.
+    /// </remarks>
+    public bool GetArbiter(ulong id0, ulong id1, [MaybeNullWhen(false)] out Arbiter arbiter)
+    {
+        ArbiterKey arbiterKey = new(id0, id1);
+
+        lock (arbiters.GetLock(arbiterKey))
+        {
+            return arbiters.TryGetValue(arbiterKey, out arbiter!);
+        }
     }
 
     /// <summary>

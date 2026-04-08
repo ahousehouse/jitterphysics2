@@ -10,7 +10,7 @@ using Jitter2.LinearMath;
 namespace Jitter2.Collision.Shapes;
 
 /// <summary>
-/// Represents a cone shape.
+/// Represents a cone shape defined by a base radius and height.
 /// </summary>
 public class ConeShape : RigidBodyShape
 {
@@ -61,18 +61,19 @@ public class ConeShape : RigidBodyShape
     /// </exception>
     public ConeShape(Real radius = (Real)0.5, Real height = (Real)1.0)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(radius, nameof(radius));
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height, nameof(height));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(radius);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
 
         this.radius = radius;
         this.height = height;
         UpdateWorldBoundingBox();
     }
 
+    /// <inheritdoc/>
     public override void SupportMap(in JVector direction, out JVector result)
     {
         const Real zeroEpsilon = (Real)1e-12;
-        // cone = disk + point
+        // cone = convex hull of disk and point
 
         // The center of mass is at 0.25 height.
         JVector baseDir = new JVector(direction.X, (Real)0.0, direction.Z);
@@ -91,44 +92,24 @@ public class ConeShape : RigidBodyShape
         }
     }
 
+    /// <inheritdoc/>
     public override void GetCenter(out JVector point)
     {
         point = JVector.Zero;
     }
 
+    /// <inheritdoc/>
     public override void CalculateBoundingBox(in JQuaternion orientation, in JVector position, out JBoundingBox box)
     {
-        const Real zeroEpsilon = (Real)1e-12;
-
         JVector upa = orientation.GetBasisY();
 
         Real xx = upa.X * upa.X;
         Real yy = upa.Y * upa.Y;
         Real zz = upa.Z * upa.Z;
 
-        Real l1 = yy + zz;
-        Real l2 = xx + zz;
-        Real l3 = xx + yy;
-
-        Real xext = 0, yext = 0, zext = 0;
-
-        if (l1 > zeroEpsilon)
-        {
-            Real sl = (Real)1.0 / MathR.Sqrt(l1);
-            xext = (yy + zz) * sl * radius;
-        }
-
-        if (l2 > zeroEpsilon)
-        {
-            Real sl = (Real)1.0 / MathR.Sqrt(l2);
-            yext = (xx + zz) * sl * radius;
-        }
-
-        if (l3 > zeroEpsilon)
-        {
-            Real sl = (Real)1.0 / MathR.Sqrt(l3);
-            zext = (xx + yy) * sl * radius;
-        }
+        Real xext = MathR.Sqrt(yy + zz) * radius;
+        Real yext = MathR.Sqrt(xx + zz) * radius;
+        Real zext = MathR.Sqrt(xx + yy) * radius;
 
         JVector p1 = -(Real)0.25 * height * upa;
         JVector p2 = +(Real)0.75 * height * upa;
@@ -142,6 +123,7 @@ public class ConeShape : RigidBodyShape
         box.Max += position;
     }
 
+    /// <inheritdoc/>
     public override void CalculateMassInertia(out JMatrix inertia, out JVector com, out Real mass)
     {
         mass = (Real)(1.0 / 3.0) * MathR.PI * radius * radius * height;

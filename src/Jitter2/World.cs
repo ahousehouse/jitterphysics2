@@ -26,15 +26,32 @@ namespace Jitter2;
 /// </summary>
 public sealed partial class World : IDisposable
 {
+    /// <summary>
+    /// Controls how internal worker threads behave between calls to <see cref="Step(Real, bool)"/>.
+    /// </summary>
     public enum ThreadModelType
     {
+        /// <summary>
+        /// Worker threads may yield when the engine is idle. Lower background CPU usage.
+        /// </summary>
         Regular,
+
+        /// <summary>
+        /// Worker threads remain active between steps to reduce wake-up latency,
+        /// at the cost of higher background CPU usage.
+        /// </summary>
         Persistent
     }
 
     /// <summary>
     /// Provides access to objects in unmanaged memory. This operation is potentially unsafe.
     /// </summary>
+    /// <remarks>
+    /// The returned spans are backed by unmanaged memory and are only valid until the next
+    /// world modification that may resize internal buffers (e.g., creating or removing bodies,
+    /// constraints, contacts, or calling <see cref="Step"/>). Do not cache these spans.
+    /// Not safe to use concurrently with <see cref="Step(Real, bool)"/>.
+    /// </remarks>
     public readonly struct SpanData(World world)
     {
         /// <summary>
@@ -46,20 +63,40 @@ public sealed partial class World : IDisposable
             world.memConstraints.TotalBytesAllocated +
             world.memSmallConstraints.TotalBytesAllocated;
 
+        /// <summary>Span over active (awake) rigid body data.</summary>
         public Span<RigidBodyData> ActiveRigidBodies => world.memRigidBodies.Active;
+
+        /// <summary>Span over inactive (sleeping) rigid body data.</summary>
         public Span<RigidBodyData> InactiveRigidBodies => world.memRigidBodies.Inactive;
+
+        /// <summary>Span over all rigid body data (active and inactive).</summary>
         public Span<RigidBodyData> RigidBodies => world.memRigidBodies.Elements;
 
+        /// <summary>Span over active contact data.</summary>
         public Span<ContactData> ActiveContacts => world.memContacts.Active;
+
+        /// <summary>Span over inactive contact data.</summary>
         public Span<ContactData> InactiveContacts => world.memContacts.Inactive;
+
+        /// <summary>Span over all contact data (active and inactive).</summary>
         public Span<ContactData> Contacts => world.memContacts.Elements;
 
+        /// <summary>Span over active constraint data.</summary>
         public Span<ConstraintData> ActiveConstraints => world.memConstraints.Active;
+
+        /// <summary>Span over inactive constraint data.</summary>
         public Span<ConstraintData> InactiveConstraints => world.memConstraints.Inactive;
+
+        /// <summary>Span over all constraint data (active and inactive).</summary>
         public Span<ConstraintData> Constraints => world.memConstraints.Elements;
 
+        /// <summary>Span over active small constraint data.</summary>
         public Span<SmallConstraintData> ActiveSmallConstraints => world.memSmallConstraints.Active;
+
+        /// <summary>Span over inactive small constraint data.</summary>
         public Span<SmallConstraintData> InactiveSmallConstraints => world.memSmallConstraints.Inactive;
+
+        /// <summary>Span over all small constraint data (active and inactive).</summary>
         public Span<SmallConstraintData> SmallConstraints => world.memSmallConstraints.Elements;
     }
 
@@ -68,11 +105,63 @@ public sealed partial class World : IDisposable
     private readonly PartitionedBuffer<ConstraintData> memConstraints;
     private readonly PartitionedBuffer<SmallConstraintData> memSmallConstraints;
 
+    /// <summary>
+    /// Delegate for per-step and per-substep callbacks.
+    /// </summary>
+    /// <param name="dt">
+    /// The duration in seconds: the full step duration for <see cref="PreStep"/>/<see cref="PostStep"/>,
+    /// or the substep duration for <see cref="PreSubStep"/>/<see cref="PostSubStep"/>.
+    /// </param>
     public delegate void WorldStep(Real dt);
 
     // Post- and Pre-step
+
+    /// <summary>
+    /// Raised at the beginning of a simulation step, before any collision detection,
+    /// constraint solving, or integration is performed.
+    /// </summary>
+    /// <remarks>
+    /// This event is invoked once per call to <see cref="Step"/> and receives the full
+    /// step time <c>dt</c>. It can be used to apply external forces, modify bodies,
+    /// or gather per-step diagnostics before the simulation advances.
+    /// </remarks>
+    [CallbackThread(ThreadContext.MainThread)]
     public event WorldStep? PreStep;
+
+    /// <summary>
+    /// Raised at the end of a simulation step, after all substeps, collision handling,
+    /// and integration have completed.
+    /// </summary>
+    /// <remarks>
+    /// This event is invoked once per call to <see cref="Step"/> and receives the full
+    /// step time <c>dt</c>. At this point, all body states represent the final results
+    /// of the step.
+    /// </remarks>
+    [CallbackThread(ThreadContext.MainThread)]
     public event WorldStep? PostStep;
+
+    /// <summary>
+    /// Raised at the beginning of each substep during a simulation step.
+    /// </summary>
+    /// <remarks>
+    /// A simulation step may be divided into multiple substeps for stability.
+    /// This event is invoked once per substep and receives the substep duration
+    /// (<c>dt / substepCount</c>). It is called immediately before force integration
+    /// and constraint solving for the substep.
+    /// </remarks>
+    [CallbackThread(ThreadContext.MainThread)]
+    public event WorldStep? PreSubStep;
+
+    /// <summary>
+    /// Raised at the end of each substep during a simulation step.
+    /// </summary>
+    /// <remarks>
+    /// This event is invoked once per substep and receives the substep duration.
+    /// It is called after integration and constraint solving for the substep
+    /// have completed.
+    /// </remarks>
+    [CallbackThread(ThreadContext.MainThread)]
+    public event WorldStep? PostSubStep;
 
     /// <summary>
     /// Grants access to objects residing in unmanaged memory. This operation can be potentially unsafe. Use
@@ -91,6 +180,7 @@ public sealed partial class World : IDisposable
     /// <summary>
     /// Generates a unique ID.
     /// </summary>
+    /// <returns>A monotonically increasing unique identifier.</returns>
     public static ulong RequestId()
     {
         return Interlocked.Increment(ref _idCounter);
@@ -148,10 +238,16 @@ public sealed partial class World : IDisposable
     public bool AllowDeactivation { get; set; } = true;
 
     /// <summary>
-    /// Number of iterations (solver and relaxation) per substep (see <see cref="SubstepCount"/>).
+    /// Gets or sets the number of iterations per substep for the constraint solver and velocity relaxation.
     /// </summary>
-    /// <remarks>Default value: (solver: 6, relaxation: 4)</remarks>
-    /// <value></value>
+    /// <remarks>
+    /// Higher solver iterations improve constraint accuracy at the cost of performance.
+    /// Relaxation iterations help reduce velocity errors after solving.
+    /// Default value: (solver: 6, relaxation: 4).
+    /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// Thrown if <c>solver</c> is less than 1 or <c>relaxation</c> is negative.
+    /// </exception>
     public (int solver, int relaxation) SolverIterations
     {
         get => (solverIterations, velocityRelaxations);
@@ -177,6 +273,7 @@ public sealed partial class World : IDisposable
     /// <summary>
     /// The number of substeps for each call to <see cref="World.Step(Real, bool)"/>.
     /// Sub-stepping is deactivated when set to one.
+    /// Default value: 1.
     /// </summary>
     public int SubstepCount
     {
@@ -195,6 +292,7 @@ public sealed partial class World : IDisposable
 
     /// <summary>
     /// Default gravity, see also <see cref="RigidBody.AffectedByGravity"/>.
+    /// Default value: (0, -9.81, 0).
     /// </summary>
     public JVector Gravity { get; set; } = new(0, -(Real)9.81, 0);
 
@@ -209,25 +307,16 @@ public sealed partial class World : IDisposable
     private Real invStepDt = (Real)100.0;
 
     /// <summary>
-    /// Creates an instance of the <see cref="World"/> class with the default capacity.
-    /// This initializes the world using default values for the number of bodies, contacts,
-    /// constraints, and small constraints as defined in <see cref="Capacity.Default"/>.
+    /// Creates an instance of the World class.
     /// </summary>
-    /// <seealso cref="World(Capacity)"/>
-    public World() : this(Capacity.Default) { }
-
-    /// <summary>
-    /// Creates an instance of the World class. As Jitter uses a distinct memory model, it is necessary to specify
-    /// the capacity of the world in advance.
-    /// </summary>
-    public World(Capacity capacity)
+    public World()
     {
-        Logger.Information($"Creating new world with capacity: {capacity}");
+        Logger.Information($"Creating new world.");
 
-        memRigidBodies = new PartitionedBuffer<RigidBodyData>(capacity.BodyCount, aligned64: true);
-        memContacts = new PartitionedBuffer<ContactData>(capacity.ContactCount);
-        memConstraints = new PartitionedBuffer<ConstraintData>(capacity.ConstraintCount);
-        memSmallConstraints = new PartitionedBuffer<SmallConstraintData>(capacity.SmallConstraintCount);
+        memRigidBodies = new PartitionedBuffer<RigidBodyData>(aligned64: true);
+        memContacts = new PartitionedBuffer<ContactData>();
+        memConstraints = new PartitionedBuffer<ConstraintData>();
+        memSmallConstraints = new PartitionedBuffer<SmallConstraintData>();
 
         NullBody = CreateRigidBody();
         NullBody.MotionType = MotionType.Static;
@@ -252,10 +341,13 @@ public sealed partial class World : IDisposable
     }
 
     /// <summary>
-    /// Removes all entities from the simulation world.
+    /// Removes all entities from the simulation world. Also clears all proxies from the dynamic tree,
+    /// including any user-added proxies not owned by the world.
     /// </summary>
     public void Clear()
     {
+        ThrowIfDisposed();
+
         // create a copy, since we are going to modify the list
         Stack<RigidBody> bodyStack = new(bodies);
         while (bodyStack.Count > 0) Remove(bodyStack.Pop());
@@ -269,8 +361,14 @@ public sealed partial class World : IDisposable
     /// Removes the specified body from the world. This operation also automatically discards any associated contacts
     /// and constraints.
     /// </summary>
+    /// <param name="body">The rigid body to remove.</param>
     public void Remove(RigidBody body)
     {
+        if (body.World != this)
+            throw new ArgumentException("The body does not belong to this world.", nameof(body));
+
+        if (body == NullBody) return;
+
         // No need to copy the hashset content first. Removing while iterating does not invalidate
         // the enumerator any longer, see https://github.com/dotnet/runtime/pull/37180
         // This comes in very handy for us.
@@ -291,8 +389,6 @@ public sealed partial class World : IDisposable
             Remove(contact);
         }
 
-        if (body == NullBody) return;
-
         memRigidBodies.Free(body.Handle);
 
         // We must be our own island.
@@ -301,6 +397,8 @@ public sealed partial class World : IDisposable
         body.Handle = JHandle<RigidBodyData>.Zero;
 
         IslandHelper.BodyRemoved(islands, body);
+
+        body.InternalIsland = null!;
 
         bodies.Remove(body);
     }
@@ -312,6 +410,9 @@ public sealed partial class World : IDisposable
     /// <param name="constraint">The constraint to be removed.</param>
     public void Remove(Constraint constraint)
     {
+        if (constraint.Body1.World != this)
+            throw new ArgumentException("The constraint does not belong to this world.", nameof(constraint));
+
         ActivateBodyNextStep(constraint.Body1);
         ActivateBodyNextStep(constraint.Body2);
 
@@ -334,6 +435,9 @@ public sealed partial class World : IDisposable
     /// </summary>
     public void Remove(Arbiter arbiter)
     {
+        if (arbiter.Body1.World != this)
+            throw new ArgumentException("The arbiter does not belong to this world.", nameof(arbiter));
+
         ActivateBodyNextStep(arbiter.Body1);
         ActivateBodyNextStep(arbiter.Body2);
 
@@ -343,16 +447,26 @@ public sealed partial class World : IDisposable
         brokenArbiters.Remove(arbiter.Handle);
         memContacts.Free(arbiter.Handle);
 
-        Arbiter.Pool.Push(arbiter);
-
         arbiter.Handle = JHandle<ContactData>.Zero;
+        arbiter.Body1 = null!;
+        arbiter.Body2 = null!;
+
+        Arbiter.Pool.Push(arbiter);
     }
 
-    internal void ActivateBodyNextStep(RigidBody body)
+    /// <summary>
+    /// Marks a body to be activated at the start of the next step.
+    /// </summary>
+    /// <param name="body">The body to activate.</param>
+    /// <param name="wakeUpStatic">Set to true when the intention is to move a static
+    /// body or to switch from another MotionType to static. This then activates all connected bodies.</param>
+    internal void ActivateBodyNextStep(RigidBody body, bool wakeUpStatic = false)
     {
         body.InternalSleepTime = 0;
 
         if (body.IsActive) return;
+
+        if (body.MotionType == MotionType.Static && !wakeUpStatic) return;
 
         AddToActiveList(body.InternalIsland);
 
@@ -365,13 +479,17 @@ public sealed partial class World : IDisposable
 
             foreach (var c in body.Contacts)
             {
-                ActivateBodyNextStep(c.Body1 == body ? c.Body2 : c.Body1);
+               ActivateBodyNextStep(c.Body1 == body ? c.Body2 : c.Body1);
             }
         }
 
         body.Island.NeedsUpdate = true;
     }
 
+    /// <summary>
+    /// Removes constraints and contacts that connect two non-dynamic bodies.
+    /// </summary>
+    /// <param name="body">The body whose non-dynamic connections should be removed.</param>
     internal void RemoveStaticStaticConstraints(RigidBody body)
     {
         foreach (var constraint in body.InternalConstraints)
@@ -393,6 +511,10 @@ public sealed partial class World : IDisposable
         }
     }
 
+    /// <summary>
+    /// Rebuilds island connections from the body's existing contacts and constraints.
+    /// </summary>
+    /// <param name="body">The body whose connections should be rebuilt.</param>
     internal void BuildConnectionsFromExistingContacts(RigidBody body)
     {
         foreach (var constraint in body.InternalConstraints)
@@ -406,6 +528,10 @@ public sealed partial class World : IDisposable
         }
     }
 
+    /// <summary>
+    /// Removes all island connections for a body.
+    /// </summary>
+    /// <param name="body">The body whose connections should be removed.</param>
     internal void RemoveConnections(RigidBody body)
     {
         if (body.InternalConnections.Count > 0)
@@ -432,21 +558,33 @@ public sealed partial class World : IDisposable
         Debug.Assert(body.InternalIsland.InternalBodies.Count == 1);
     }
 
+    /// <summary>
+    /// Marks a body to be deactivated at the start of the next step.
+    /// </summary>
+    /// <param name="body">The body to deactivate.</param>
     internal void DeactivateBodyNextStep(RigidBody body)
     {
         body.InternalSleepTime = Real.PositiveInfinity;
     }
 
     /// <summary>
-    /// Constructs a constraint of the specified type. After creation, it is mandatory to initialize the constraint using the Constraint.Initialize method.
+    /// Constructs a constraint of the specified type. After creation, initialize the constraint
+    /// by calling its <c>Initialize</c> method.
     /// </summary>
     /// <typeparam name="T">The specific type of constraint to create.</typeparam>
     /// <param name="body1">The first rigid body involved in the constraint.</param>
     /// <param name="body2">The second rigid body involved in the constraint.</param>
-    /// <returns>A new instance of the specified constraint type.</returns>
+    /// <returns>A new instance of the specified constraint type, already registered with the world.</returns>
+    /// <exception cref="ArgumentException">Thrown if <paramref name="body1"/> and <paramref name="body2"/> are the same.</exception>
     /// <exception cref="PartitionedBuffer{T}.MaximumSizeException">Raised when the maximum size limit is exceeded.</exception>
     public T CreateConstraint<T>(RigidBody body1, RigidBody body2) where T : Constraint, new()
     {
+        ThrowIfDisposed();
+
+        if (body1.World != this)
+            throw new ArgumentException("The body does not belong to this world.", nameof(body1));
+        if (body2.World != this)
+            throw new ArgumentException("The body does not belong to this world.", nameof(body2));
         if (ReferenceEquals(body1, body2))
             throw new ArgumentException($"{nameof(body1)} and {nameof(body2)} must be different.");
 
@@ -469,6 +607,10 @@ public sealed partial class World : IDisposable
         return constraint;
     }
 
+    /// <summary>
+    /// Marks an island as active and moves it to the active partition.
+    /// </summary>
+    /// <param name="island">The island to activate.</param>
     private void AddToActiveList(Island island)
     {
         island.MarkedAsActive = true;
@@ -482,6 +624,7 @@ public sealed partial class World : IDisposable
     /// <exception cref="PartitionedBuffer{T}.MaximumSizeException">Raised when the maximum size limit is exceeded.</exception>
     public RigidBody CreateRigidBody()
     {
+        ThrowIfDisposed();
         RigidBody body = new(memRigidBodies.Allocate(true, true), this);
         body.Data.IsActive = true;
 
@@ -494,11 +637,32 @@ public sealed partial class World : IDisposable
         return body;
     }
 
+    private bool disposed;
+
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+    }
+
+    /// <summary>
+    /// Releases all unmanaged memory buffers used by this simulation world.
+    /// </summary>
+    /// <remarks>
+    /// After disposal, the world instance is unusable. All bodies, constraints, and contacts
+    /// become invalid. Calling <see cref="Dispose"/> multiple times is safe.
+    /// </remarks>
     public void Dispose()
     {
+        if (disposed) return;
+        disposed = true;
+
         memContacts.Dispose();
         memRigidBodies.Dispose();
         memConstraints.Dispose();
         memSmallConstraints.Dispose();
+
+        deferredContacts.Dispose();
+        deferredConstraints.Dispose();
+        deferredSmallConstraints.Dispose();
     }
 }

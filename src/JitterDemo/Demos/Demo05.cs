@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
 using Jitter2;
 using Jitter2.Collision.Shapes;
 using Jitter2.Dynamics;
@@ -23,9 +25,11 @@ public class Dust : TriangleMesh
     }
 }
 
-public class Demo05 : IDemo
+public class Demo05 : IDemo, IDrawUpdate
 {
     public string Name => "Level Geometry";
+    public string Description => "Triangle-mesh level loaded from an OBJ file with a player character.";
+    public string Controls => "Arrow Keys - Move player\nLeft Ctrl - Jump\nO - Toggle debug draw";
 
     private TriangleMesh tm = null!;
 
@@ -33,43 +37,25 @@ public class Demo05 : IDemo
 
     private RigidBody level = null!;
 
-    private bool debugDraw = false;
+    private bool debugDraw;
 
     public IEnumerable<RigidBodyShape> CreateShapes()
     {
-        var indices = tm.Mesh.Indices;
-        var vertices = tm.Mesh.Vertices;
+        var indices = MemoryMarshal.Cast<TriangleVertexIndex, int>(tm.Mesh.Indices);
+        var vertices = tm.Mesh.Vertices.Select(vertex => Conversion.ToJitterVector(vertex.Position)).ToArray();
 
-        List<JTriangle> triangles = new();
-
-        foreach (var tvi in indices)
-        {
-            JVector v1 = Conversion.ToJitterVector(vertices[tvi.T1].Position);
-            JVector v2 = Conversion.ToJitterVector(vertices[tvi.T2].Position);
-            JVector v3 = Conversion.ToJitterVector(vertices[tvi.T3].Position);
-
-            triangles.Add(new JTriangle(v1, v2, v3));
-        }
-
-        var jtm = new Jitter2.Collision.Shapes.TriangleMesh(triangles, true);
-
-        for (int i = 0; i < jtm.Indices.Length; i++)
-        {
-            yield return new TriangleShape(jtm, i);
-        }
+        var jtm = new Jitter2.Collision.Shapes.TriangleMesh(vertices, indices);
+        return TriangleShape.CreateAllShapes(jtm);
     }
 
-    public void Build()
+    public void Build(Playground pg, World world)
     {
-        tm = RenderWindow.Instance.CSMRenderer.GetInstance<Dust>();
+        tm = pg.CSMRenderer.GetInstance<Dust>();
 
-        Playground pg = (Playground)RenderWindow.Instance;
-        World world = pg.World;
-
-        pg.ResetScene();
+        pg.AddFloor();
 
         level = world.CreateRigidBody();
-        level.AddShape(CreateShapes(), false);
+        level.AddShapes(CreateShapes(), MassInertiaUpdateMode.Preserve);
         level.Tag = new RigidBodyTag(doNotDraw:true);
         level.MotionType = MotionType.Static;
 
@@ -78,7 +64,7 @@ public class Demo05 : IDemo
         player = new Player(world, new JVector(-6, 7, 32));
     }
 
-    public void Draw()
+    public void DrawUpdate()
     {
         tm.PushMatrix(Conversion.FromJitter(level), new Vector3(0.35f, 0.35f, 0.35f));
 

@@ -6,15 +6,13 @@
 
 Jitter Physics 2, the evolution of [Jitter Physics](https://github.com/notgiven688/jitterphysics), is an impulse-based dynamics engine with a semi-implicit Euler integrator. It is a fast, simple, and dependency-free engine written in C# with a clear and user-friendly API.
 
-The official **NuGet** package ([changelog](https://jitterphysics.com/docs/changelog)) can be found [here](https://www.nuget.org/packages/Jitter2), the *double precision* version [here](https://www.nuget.org/packages/Jitter2.Double).
+📦 The official **NuGet** package ([changelog](https://jitterphysics.com/docs/changelog)) can be found [here](https://www.nuget.org/packages/Jitter2), the *double precision* version [here](https://www.nuget.org/packages/Jitter2.Double).
 
 ---
 
-Run a small demo directly [in the browser](https://jitterphysics.com/AppBundle/index.html)!
+▶️ Try the interactive demo and explore the docs at **[jitterphysics.com](https://jitterphysics.com/docs/introduction.html)**.
 
-There is also a tiny demo available for the [Godot engine](other/GodotDemo).
-
-See below for a fully-featured demo.
+There is also a tiny demo available for the [Godot engine](other/GodotDemo) 🎮.
 
 ---
 
@@ -31,7 +29,7 @@ Jitter is cross-platform. The `src` directory contains four projects:
 | Jitter2          | The main library housing Jitter2's functionalities.         |
 | JitterDemo       | Features demo scenes rendered with OpenGL, tested on Linux and Windows. |
 | JitterBenchmark  | The setup for conducting benchmarks using BenchmarkDotNet.  |
-| JitterTests      | Unit tests utilizing NUnit.
+| JitterTests      | Unit tests utilizing NUnit.                                |
 
 To run the demo scenes:
 

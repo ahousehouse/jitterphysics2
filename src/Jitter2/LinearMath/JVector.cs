@@ -13,22 +13,35 @@ namespace Jitter2.LinearMath;
 /// <summary>
 /// Represents a three-dimensional vector with components of type <see cref="Real"/>.
 /// </summary>
-[StructLayout(LayoutKind.Explicit, Size = 3*sizeof(Real))]
+[StructLayout(LayoutKind.Explicit, Size = 3 * sizeof(Real))]
 public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
 {
     internal static JVector InternalZero;
     internal static JVector Arbitrary;
 
-    [FieldOffset(0*sizeof(Real))] public Real X = x;
-    [FieldOffset(1*sizeof(Real))] public Real Y = y;
-    [FieldOffset(2*sizeof(Real))] public Real Z = z;
+    [FieldOffset(0 * sizeof(Real))] public Real X = x;
+    [FieldOffset(1 * sizeof(Real))] public Real Y = y;
+    [FieldOffset(2 * sizeof(Real))] public Real Z = z;
 
+    /// <summary>The zero vector (0, 0, 0).</summary>
     public static readonly JVector Zero;
+
+    /// <summary>The unit vector along the X-axis (1, 0, 0).</summary>
     public static readonly JVector UnitX;
+
+    /// <summary>The unit vector along the Y-axis (0, 1, 0).</summary>
     public static readonly JVector UnitY;
+
+    /// <summary>The unit vector along the Z-axis (0, 0, 1).</summary>
     public static readonly JVector UnitZ;
+
+    /// <summary>A vector with all components set to one (1, 1, 1).</summary>
     public static readonly JVector One;
+
+    /// <summary>A vector with all components set to <see cref="Real.MinValue"/>.</summary>
     public static readonly JVector MinValue;
+
+    /// <summary>A vector with all components set to <see cref="Real.MaxValue"/>.</summary>
     public static readonly JVector MaxValue;
 
     static JVector()
@@ -52,6 +65,10 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         Z = z;
     }
 
+    /// <summary>
+    /// Creates a vector with all components set to the same value.
+    /// </summary>
+    /// <param name="xyz">The value for X, Y, and Z components.</param>
     public JVector(Real xyz) : this(xyz, xyz, xyz)
     {
     }
@@ -109,6 +126,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return true;
     }
 
+    /// <summary>
+    /// Returns a vector containing the minimum components of the specified vectors.
+    /// </summary>
+    /// <param name="value1">The first vector.</param>
+    /// <param name="value2">The second vector.</param>
+    /// <returns>A vector with the minimum of each component.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector Min(in JVector value1, in JVector value2)
     {
@@ -116,6 +139,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Returns a vector containing the minimum components of the specified vectors.
+    /// </summary>
+    /// <param name="value1">The first vector.</param>
+    /// <param name="value2">The second vector.</param>
+    /// <param name="result">Output: A vector with the minimum of each component.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Min(in JVector value1, in JVector value2, out JVector result)
     {
@@ -124,6 +153,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         result.Z = value1.Z < value2.Z ? value1.Z : value2.Z;
     }
 
+    /// <summary>
+    /// Returns a vector containing the maximum components of the specified vectors.
+    /// </summary>
+    /// <param name="value1">The first vector.</param>
+    /// <param name="value2">The second vector.</param>
+    /// <returns>A vector with the maximum of each component.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector Max(in JVector value1, in JVector value2)
     {
@@ -131,19 +166,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static JVector Abs(in JVector value1)
-    {
-        return new JVector(MathR.Abs(value1.X), MathR.Abs(value1.Y), MathR.Abs(value1.Z));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Real MaxAbs(in JVector value1)
-    {
-        JVector abs = Abs(value1);
-        return MathR.Max(MathR.Max(abs.X, abs.Y), abs.Z);
-    }
-
+    /// <summary>
+    /// Returns a vector containing the maximum components of the specified vectors.
+    /// </summary>
+    /// <param name="value1">The first vector.</param>
+    /// <param name="value2">The second vector.</param>
+    /// <param name="result">Output: A vector with the maximum of each component.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Max(in JVector value1, in JVector value2, out JVector result)
     {
@@ -153,8 +181,34 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
     }
 
     /// <summary>
-    /// Calculates matrix \times vector, where vector is a column vector.
+    /// Returns a vector containing the absolute values of the components of the specified vector.
     /// </summary>
+    /// <param name="value1">The input vector.</param>
+    /// <returns>A vector with absolute values of each component.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static JVector Abs(in JVector value1)
+    {
+        return new JVector(MathR.Abs(value1.X), MathR.Abs(value1.Y), MathR.Abs(value1.Z));
+    }
+
+    /// <summary>
+    /// Returns the maximum absolute value among the vector's components.
+    /// </summary>
+    /// <param name="value1">The input vector.</param>
+    /// <returns>The maximum of |X|, |Y|, and |Z|.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Real MaxAbs(in JVector value1)
+    {
+        JVector abs = Abs(value1);
+        return MathR.Max(MathR.Max(abs.X, abs.Y), abs.Z);
+    }
+
+    /// <summary>
+    /// Calculates <c>matrix * vector</c> (multiplying matrix by column vector).
+    /// </summary>
+    /// <param name="vector">The column vector.</param>
+    /// <param name="matrix">The matrix.</param>
+    /// <returns>The transformed vector.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector Transform(in JVector vector, in JMatrix matrix)
     {
@@ -162,6 +216,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Transforms the vector by a quaternion rotation.
+    /// </summary>
+    /// <param name="vector">The vector to transform.</param>
+    /// <param name="quat">The quaternion representing the rotation.</param>
+    /// <returns>The rotated vector.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector Transform(in JVector vector, in JQuaternion quat)
     {
@@ -170,8 +230,11 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
     }
 
     /// <summary>
-    /// Calculates transposed(matrix) times vector, where vector is a column vector.
+    /// Calculates <c>matrixᵀ * vector</c> (multiplying transposed matrix by column vector).
     /// </summary>
+    /// <param name="vector">The column vector.</param>
+    /// <param name="matrix">The matrix (transposed during operation).</param>
+    /// <returns>The transformed vector.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector TransposedTransform(in JVector vector, in JMatrix matrix)
     {
@@ -179,6 +242,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Transforms the vector by the conjugate of a quaternion (inverse rotation for unit quaternions).
+    /// </summary>
+    /// <param name="vector">The vector to transform.</param>
+    /// <param name="quat">The quaternion (conjugated during operation).</param>
+    /// <returns>The inversely rotated vector.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector ConjugatedTransform(in JVector vector, in JQuaternion quat)
     {
@@ -187,8 +256,11 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
     }
 
     /// <summary>
-    /// Calculates matrix \times vector, where vector is a column vector.
+    /// Calculates <c>matrix * vector</c> (multiplying matrix by column vector).
     /// </summary>
+    /// <param name="vector">The column vector.</param>
+    /// <param name="matrix">The matrix.</param>
+    /// <param name="result">Output: The transformed vector.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Transform(in JVector vector, in JMatrix matrix, out JVector result)
     {
@@ -202,8 +274,11 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
     }
 
     /// <summary>
-    /// Calculates transposed(matrix) times vector, where vector is a column vector.
+    /// Calculates <c>matrixᵀ * vector</c> (multiplying transposed matrix by column vector).
     /// </summary>
+    /// <param name="vector">The column vector.</param>
+    /// <param name="matrix">The matrix (transposed during operation).</param>
+    /// <param name="result">Output: The transformed vector.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void TransposedTransform(in JVector vector, in JMatrix matrix, out JVector result)
     {
@@ -217,8 +292,11 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
     }
 
     /// <summary>
-    /// Transforms the vector by a quaternion.
+    /// Transforms the vector by a quaternion rotation.
     /// </summary>
+    /// <param name="vector">The vector to transform.</param>
+    /// <param name="quaternion">The quaternion representing the rotation.</param>
+    /// <param name="result">Output: The rotated vector.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Transform(in JVector vector, in JQuaternion quaternion, out JVector result)
     {
@@ -236,8 +314,11 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
     }
 
     /// <summary>
-    /// Transforms the vector by a conjugated quaternion.
+    /// Transforms the vector by the conjugate of a quaternion (inverse rotation).
     /// </summary>
+    /// <param name="vector">The vector to transform.</param>
+    /// <param name="quaternion">The quaternion (conjugated during operation).</param>
+    /// <param name="result">Output: The inversely rotated vector.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ConjugatedTransform(in JVector vector, in JQuaternion quaternion, out JVector result)
     {
@@ -255,8 +336,14 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
     }
 
     /// <summary>
-    /// Calculates the outer product.
+    /// Calculates the outer product (tensor product) of two vectors.
     /// </summary>
+    /// <remarks>
+    /// Result is the matrix <c>u * vᵀ</c>.
+    /// </remarks>
+    /// <param name="u">The first vector.</param>
+    /// <param name="v">The second vector.</param>
+    /// <returns>A 3x3 matrix representing the outer product.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JMatrix Outer(in JVector u, in JVector v)
     {
@@ -273,12 +360,24 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Calculates the dot product of two vectors (<c>u · v</c>).
+    /// </summary>
+    /// <param name="vector1">The first vector.</param>
+    /// <param name="vector2">The second vector.</param>
+    /// <returns>The dot product.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Real Dot(in JVector vector1, in JVector vector2)
     {
         return vector1.X * vector2.X + vector1.Y * vector2.Y + vector1.Z * vector2.Z;
     }
 
+    /// <summary>
+    /// Adds two vectors.
+    /// </summary>
+    /// <param name="value1">The first vector.</param>
+    /// <param name="value2">The second vector.</param>
+    /// <returns>The sum of the two vectors.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector Add(in JVector value1, in JVector value2)
     {
@@ -286,6 +385,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Adds two vectors.
+    /// </summary>
+    /// <param name="value1">The first vector.</param>
+    /// <param name="value2">The second vector.</param>
+    /// <param name="result">Output: The sum of the two vectors.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Add(in JVector value1, in JVector value2, out JVector result)
     {
@@ -294,6 +399,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         result.Z = value1.Z + value2.Z;
     }
 
+    /// <summary>
+    /// Subtracts the second vector from the first.
+    /// </summary>
+    /// <param name="value1">The first vector.</param>
+    /// <param name="value2">The second vector.</param>
+    /// <returns>The difference of the two vectors.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector Subtract(JVector value1, JVector value2)
     {
@@ -301,6 +412,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Subtracts the second vector from the first.
+    /// </summary>
+    /// <param name="value1">The first vector.</param>
+    /// <param name="value2">The second vector.</param>
+    /// <param name="result">Output: The difference of the two vectors.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Subtract(in JVector value1, in JVector value2, out JVector result)
     {
@@ -313,6 +430,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         result.Z = num2;
     }
 
+    /// <summary>
+    /// Calculates the cross product of two vectors (<c>u × v</c>).
+    /// </summary>
+    /// <param name="vector1">The first vector.</param>
+    /// <param name="vector2">The second vector.</param>
+    /// <returns>The cross product.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector Cross(in JVector vector1, in JVector vector2)
     {
@@ -320,6 +443,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Calculates the cross product of two vectors (<c>u × v</c>).
+    /// </summary>
+    /// <param name="vector1">The first vector.</param>
+    /// <param name="vector2">The second vector.</param>
+    /// <param name="result">Output: The cross product.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Cross(in JVector vector1, in JVector vector2, out JVector result)
     {
@@ -344,6 +473,10 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         Z = -Z;
     }
 
+    /// <summary>
+    /// Negates the vector in-place.
+    /// </summary>
+    /// <param name="vector">The vector to negate.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void NegateInPlace(ref JVector vector)
     {
@@ -352,6 +485,11 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         vector.Z = -vector.Z;
     }
 
+    /// <summary>
+    /// Returns a negated copy of the vector.
+    /// </summary>
+    /// <param name="value">The vector to negate.</param>
+    /// <returns>The negated vector.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector Negate(in JVector value)
     {
@@ -359,6 +497,11 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Returns a negated copy of the vector.
+    /// </summary>
+    /// <param name="value">The vector to negate.</param>
+    /// <param name="result">Output: The negated vector.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Negate(in JVector value, out JVector result)
     {
@@ -371,13 +514,17 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         result.Z = num2;
     }
 
+    /// <summary>
+    /// Returns a normalized unit vector.
+    /// </summary>
+    /// <param name="value">The vector to normalize.</param>
+    /// <returns>The normalized unit vector.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector Normalize(in JVector value)
     {
         Normalize(value, out JVector result);
         return result;
     }
-
 
     /// <summary>
     /// Normalizes <paramref name="value"/>; returns <see cref="JVector.Zero"/> when its squared-length is below <paramref name="epsilonSquared"/>.
@@ -406,6 +553,10 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         Z *= num;
     }
 
+    /// <summary>
+    /// Normalizes the vector in-place.
+    /// </summary>
+    /// <param name="toNormalize">The vector to normalize.</param>
     public static void NormalizeInPlace(ref JVector toNormalize)
     {
         Real num2 = toNormalize.LengthSquared();
@@ -415,6 +566,11 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         toNormalize.Z *= num;
     }
 
+    /// <summary>
+    /// Returns a normalized unit vector.
+    /// </summary>
+    /// <param name="value">The vector to normalize.</param>
+    /// <param name="result">Output: The normalized unit vector.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Normalize(in JVector value, out JVector result)
     {
@@ -425,24 +581,39 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         result.Z = value.Z * num;
     }
 
+    /// <summary>
+    /// Calculates the squared length of the vector (<c>‖v‖²</c>).
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly Real LengthSquared()
     {
         return X * X + Y * Y + Z * Z;
     }
 
+    /// <summary>
+    /// Calculates the length of the vector (<c>‖v‖</c>).
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly Real Length()
     {
         return MathR.Sqrt(X * X + Y * Y + Z * Z);
     }
 
+    /// <summary>
+    /// Swaps the values of two vectors.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Swap(ref JVector vector1, ref JVector vector2)
     {
         (vector2, vector1) = (vector1, vector2);
     }
 
+    /// <summary>
+    /// Multiplies a vector by a scalar.
+    /// </summary>
+    /// <param name="value1">The vector.</param>
+    /// <param name="scaleFactor">The scalar factor.</param>
+    /// <returns>The scaled vector.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector Multiply(in JVector value1, Real scaleFactor)
     {
@@ -450,6 +621,12 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Multiplies a vector by a scalar.
+    /// </summary>
+    /// <param name="value1">The vector.</param>
+    /// <param name="scaleFactor">The scalar factor.</param>
+    /// <param name="result">Output: The scaled vector.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Multiply(in JVector value1, Real scaleFactor, out JVector result)
     {
@@ -459,7 +636,7 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
     }
 
     /// <summary>
-    /// Calculates the cross-product.
+    /// Calculates the cross product of two vectors (<c>u × v</c>).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector operator %(in JVector vector1, in JVector vector2)
@@ -471,12 +648,18 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Calculates the dot product of two vectors (<c>u · v</c>).
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Real operator *(in JVector vector1, in JVector vector2)
     {
         return vector1.X * vector2.X + vector1.Y * vector2.Y + vector1.Z * vector2.Z;
     }
 
+    /// <summary>
+    /// Multiplies a vector by a scalar.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector operator *(in JVector value1, Real value2)
     {
@@ -487,6 +670,9 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Multiplies a vector by a scalar.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector operator *(Real value1, in JVector value2)
     {
@@ -497,6 +683,9 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Subtracts the second vector from the first.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector operator -(in JVector value1, in JVector value2)
     {
@@ -507,18 +696,27 @@ public partial struct JVector(Real x, Real y, Real z) : IEquatable<JVector>
         return result;
     }
 
+    /// <summary>
+    /// Negates the vector.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector operator -(in JVector left)
     {
         return Multiply(left, -(Real)1.0);
     }
 
+    /// <summary>
+    /// Returns the vector itself.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector operator +(in JVector left)
     {
         return left;
     }
 
+    /// <summary>
+    /// Adds two vectors.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JVector operator +(in JVector value1, in JVector value2)
     {

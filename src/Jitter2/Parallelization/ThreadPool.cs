@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Jitter2 Physics Library
  * (c) Thorben Linneweber and contributors
  * SPDX-License-Identifier: MIT
@@ -71,9 +71,19 @@ namespace Jitter2.Parallelization;
  */
 
 /// <summary>
-/// Manages worker threads, which can run arbitrary delegates <see cref="Action"/>
-/// multiThreaded.
+/// Provides a persistent worker thread pool for parallel task execution within the physics engine.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Worker threads are kept alive for the lifetime of the pool to avoid wake-up overhead.
+/// Tasks are distributed via per-thread queues with work stealing for load balancing.
+/// </para>
+/// <para>
+/// The main thread participates as "worker 0" during <see cref="Execute"/> calls.
+/// Use <see cref="ResumeWorkers"/> and <see cref="PauseWorkers"/> to control thread activity
+/// between simulation steps.
+/// </para>
+/// </remarks>
 public sealed class ThreadPool
 {
     private interface ITask
@@ -113,6 +123,9 @@ public sealed class ThreadPool
         }
     }
 
+    /// <summary>
+    /// The fraction of available processors to use for worker threads.
+    /// </summary>
     public const float ThreadsPerProcessor = 0.9f;
 
     private readonly ManualResetEventSlim mainResetEvent;
@@ -130,9 +143,9 @@ public sealed class ThreadPool
     private static ThreadPool? _instance;
 
     /// <summary>
-    /// Get the number of threads used by the ThreadManager to execute
-    /// tasks.
+    /// Gets the number of worker threads managed by this pool.
     /// </summary>
+    /// <value>Includes the main thread as worker 0.</value>
     public int ThreadCount => threadCount;
 
     private ThreadPool()
@@ -158,11 +171,20 @@ public sealed class ThreadPool
         ChangeThreadCount(initialThreadCount);
     }
 
+    /// <summary>
+    /// Gets the suggested number of threads based on available processors.
+    /// </summary>
+    /// <value>At least 1, computed as <see cref="ThreadsPerProcessor"/> × processor count.</value>
     public static int ThreadCountSuggestion => Math.Max((int)(Environment.ProcessorCount * ThreadsPerProcessor), 1);
 
     /// <summary>
     /// Changes the number of worker threads.
     /// </summary>
+    /// <param name="numThreads">The new thread count.</param>
+    /// <remarks>
+    /// Existing worker threads are stopped and new ones are created.
+    /// This operation blocks until all previous threads have terminated.
+    /// </remarks>
     public void ChangeThreadCount(int numThreads)
     {
         if (numThreads == threadCount) return;
@@ -205,9 +227,15 @@ public sealed class ThreadPool
     }
 
     /// <summary>
-    /// Add a task to the task queue. Call <see cref="Execute"/> to
-    /// execute added tasks.
+    /// Adds a task to the queue for later execution.
     /// </summary>
+    /// <typeparam name="T">The type of the task parameter.</typeparam>
+    /// <param name="action">The action to execute.</param>
+    /// <param name="parameter">The parameter to pass to the action.</param>
+    /// <remarks>
+    /// Tasks are not executed until <see cref="Execute"/> is called.
+    /// This method is not thread-safe and must be called from a single thread.
+    /// </remarks>
     public void AddTask<T>(Action<T> action, T parameter)
     {
         var instance = Task<T>.GetFree();
@@ -236,8 +264,11 @@ public sealed class ThreadPool
 
     /// <summary>
     /// Resumes all worker threads so they can process queued tasks.
-    /// This is called automatically by <see cref="Execute"/>.
     /// </summary>
+    /// <remarks>
+    /// Called automatically by <see cref="Execute"/>. Manual calls are typically only needed
+    /// when using <see cref="World.ThreadModelType.Persistent"/>.
+    /// </remarks>
     public void ResumeWorkers()
     {
         mainResetEvent.Set();
@@ -246,6 +277,10 @@ public sealed class ThreadPool
     /// <summary>
     /// Pauses all worker threads after they finish their current tasks.
     /// </summary>
+    /// <remarks>
+    /// Workers will block on a wait handle until <see cref="ResumeWorkers"/> is called.
+    /// This reduces CPU usage between simulation steps.
+    /// </remarks>
     public void PauseWorkers()
     {
         mainResetEvent.Reset();
@@ -288,8 +323,17 @@ public sealed class ThreadPool
     }
 
     /// <summary>
-    /// Initiates the execution of all tasks added to the ThreadPool. This method returns only after all tasks have been completed.
+    /// Executes all queued tasks and blocks until completion.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Tasks are distributed to per-thread queues in round-robin order. The main thread
+    /// participates as worker 0 and performs work stealing from other queues.
+    /// </para>
+    /// <para>
+    /// This method automatically calls <see cref="ResumeWorkers"/> at the start.
+    /// </para>
+    /// </remarks>
     public void Execute()
     {
         ResumeWorkers();
@@ -304,7 +348,7 @@ public sealed class ThreadPool
 
         taskList.Clear();
 
-        // the main threads queue.
+        // the main thread's queue.
         var myQueue = queues[0];
 
         while (myQueue.TryDequeue(out var task))

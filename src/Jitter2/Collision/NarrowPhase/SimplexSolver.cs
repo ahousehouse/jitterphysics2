@@ -13,10 +13,25 @@ using Jitter2.LinearMath;
 
 namespace Jitter2.Collision;
 
+/// <summary>
+/// Implements the Gilbert-Johnson-Keerthi (GJK) simplex solver for finding the closest point
+/// to the origin on a simplex (point, line segment, triangle, or tetrahedron).
+/// </summary>
+/// <remarks>
+/// <para>
+/// This solver iteratively reduces the simplex to the feature closest to the origin.
+/// It handles degeneracy by falling back to lower-dimensional features when the current
+/// simplex is near-degenerate.
+/// </para>
+/// <para>
+/// Complexity: O(1) per vertex addition for point/segment, O(1) for triangle,
+/// O(1) for tetrahedron with early-out optimizations.
+/// </para>
+/// </remarks>
 [StructLayout(LayoutKind.Sequential)]
 public unsafe struct SimplexSolver
 {
-    const Real Epsilon = (Real)1e-8;
+    private const Real Epsilon = (Real)1e-8;
 
     private JVector v0;
     private JVector v1;
@@ -25,6 +40,9 @@ public unsafe struct SimplexSolver
 
     private uint usageMask;
 
+    /// <summary>
+    /// Resets the solver to an empty simplex.
+    /// </summary>
     public void Reset()
     {
         usageMask = 0;
@@ -211,6 +229,17 @@ public unsafe struct SimplexSolver
         return JVector.Zero;
     }
 
+    /// <summary>
+    /// Adds a vertex to the simplex and computes the new closest point to the origin.
+    /// </summary>
+    /// <param name="vertex">The vertex to add (a point on the Minkowski difference).</param>
+    /// <param name="closest">
+    /// When this method returns, contains the point on the reduced simplex closest to the origin.
+    /// </param>
+    /// <returns>
+    /// <c>true</c> if the origin is not contained within the simplex (continue iterating);
+    /// <c>false</c> if the origin is enclosed by the tetrahedron (collision detected).
+    /// </returns>
     public bool AddVertex(in JVector vertex, out JVector closest)
     {
         Unsafe.SkipInit(out closest);

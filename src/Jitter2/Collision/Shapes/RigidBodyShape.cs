@@ -9,6 +9,9 @@ using Jitter2.LinearMath;
 
 namespace Jitter2.Collision.Shapes;
 
+/// <summary>
+/// Represents the abstract base class for shapes that can be attached to a rigid body.
+/// </summary>
 public abstract class RigidBodyShape : Shape
 {
     /// <summary>
@@ -45,6 +48,10 @@ public abstract class RigidBodyShape : Shape
     /// performance or accuracy. The default implementation relies on an approximation of the shape
     /// constructed using the support map function.
     /// </summary>
+    /// <remarks>
+    /// The inertia tensor is computed relative to the coordinate system origin (0,0,0),
+    /// not the center of mass.
+    /// </remarks>
     [ReferenceFrame(ReferenceFrame.Local)]
     public virtual void CalculateMassInertia(out JMatrix inertia, out JVector com, out Real mass)
     {
@@ -97,5 +104,48 @@ public abstract class RigidBodyShape : Shape
         JVector.Transform(normal, data.Orientation, out normal);
 
         return result;
+    }
+
+    [ReferenceFrame(ReferenceFrame.World)]
+    public sealed override bool Sweep<T>(in T support, in JQuaternion orientation, in JVector position, in JVector sweep,
+        out JVector pointA, out JVector pointB, out JVector normal, out Real lambda)
+    {
+        if (RigidBody == null)
+        {
+            bool hit = NarrowPhase.Sweep(this, support,
+                orientation, position, sweep,
+                out pointB, out pointA, out normal, out lambda);
+
+            JVector.NegateInPlace(ref normal);
+            return hit;
+        }
+
+        ref var data = ref RigidBody.Data;
+
+        return NarrowPhase.Sweep(support, this,
+            orientation, data.Orientation,
+            position, data.Position,
+            sweep, JVector.Zero,
+            out pointA, out pointB, out normal, out lambda);
+    }
+
+    [ReferenceFrame(ReferenceFrame.World)]
+    public sealed override bool Distance<T>(in T support, in JQuaternion orientation, in JVector position,
+        out JVector pointA, out JVector pointB, out JVector normal, out Real distance)
+    {
+        if (RigidBody == null)
+        {
+            return NarrowPhase.Distance(support, this,
+                orientation, JQuaternion.Identity,
+                position, JVector.Zero,
+                out pointA, out pointB, out normal, out distance);
+        }
+
+        ref var data = ref RigidBody.Data;
+
+        return NarrowPhase.Distance(support, this,
+            orientation, data.Orientation,
+            position, data.Position,
+            out pointA, out pointB, out normal, out distance);
     }
 }

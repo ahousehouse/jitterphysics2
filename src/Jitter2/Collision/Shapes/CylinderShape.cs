@@ -10,7 +10,7 @@ using Jitter2.LinearMath;
 namespace Jitter2.Collision.Shapes;
 
 /// <summary>
-/// Represents a cylinder shape.
+/// Represents a cylinder shape defined by a height and radius.
 /// </summary>
 public class CylinderShape : RigidBodyShape
 {
@@ -62,19 +62,21 @@ public class CylinderShape : RigidBodyShape
     /// </exception>
     public CylinderShape(Real height, Real radius)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height, nameof(height));
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(radius, nameof(radius));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(radius);
 
         this.radius = radius;
         this.height = height;
         UpdateWorldBoundingBox();
     }
 
+    /// <inheritdoc/>
     public override void GetCenter(out JVector point)
     {
         point = JVector.Zero;
     }
 
+    /// <inheritdoc/>
     public override void SupportMap(in JVector direction, out JVector result)
     {
         Real sigma = (Real)Math.Sqrt(direction.X * direction.X + direction.Z * direction.Z);
@@ -93,49 +95,29 @@ public class CylinderShape : RigidBodyShape
         }
     }
 
+    /// <inheritdoc/>
     public override void CalculateBoundingBox(in JQuaternion orientation, in JVector position, out JBoundingBox box)
     {
-        const Real zeroEpsilon = (Real)1e-12;
-
         JVector upa = orientation.GetBasisY();
 
         Real xx = upa.X * upa.X;
         Real yy = upa.Y * upa.Y;
         Real zz = upa.Z * upa.Z;
 
-        Real l1 = yy + zz;
-        Real l2 = xx + zz;
-        Real l3 = xx + yy;
-
-        Real xext = 0, yext = 0, zext = 0;
-
-        if (l1 > zeroEpsilon)
-        {
-            Real sl = (Real)1.0 / MathR.Sqrt(l1);
-            xext = (yy + zz) * sl * radius;
-        }
-
-        if (l2 > zeroEpsilon)
-        {
-            Real sl = (Real)1.0 / MathR.Sqrt(l2);
-            yext = (xx + zz) * sl * radius;
-        }
-
-        if (l3 > zeroEpsilon)
-        {
-            Real sl = (Real)1.0 / MathR.Sqrt(l3);
-            zext = (xx + yy) * sl * radius;
-        }
+        Real xExt = MathR.Sqrt(yy + zz) * radius;
+        Real yExt = MathR.Sqrt(xx + zz) * radius;
+        Real zExt = MathR.Sqrt(xx + yy) * radius;
 
         JVector p1 = -(Real)0.5 * height * upa;
         JVector p2 = +(Real)0.5 * height * upa;
 
-        JVector delta = JVector.Max(p1, p2) + new JVector(xext, yext, zext);
+        JVector delta = JVector.Max(p1, p2) + new JVector(xExt, yExt, zExt);
 
         box.Min = position - delta;
         box.Max = position + delta;
     }
 
+    /// <inheritdoc/>
     public override void CalculateMassInertia(out JMatrix inertia, out JVector com, out Real mass)
     {
         mass = MathR.PI * radius * radius * height;

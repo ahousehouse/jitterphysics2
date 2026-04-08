@@ -4,15 +4,17 @@
  * SPDX-License-Identifier: MIT
  */
 
+using System;
 using System.Collections.Generic;
+using Jitter2.DataStructures;
 using Jitter2.LinearMath;
 
 namespace Jitter2.Collision.Shapes;
 
 /// <summary>
-/// Represents a generic convex hull, similar to <see cref="ConvexHullShape"/>. The shape is
-/// implicitly defined by a point cloud. It is not necessary for the points to lie on the convex hull.
-/// For performance optimization, this shape should ideally be used for a small number of points (~300).
+/// Represents a convex hull shape defined by a point cloud. Unlike <see cref="ConvexHullShape"/>,
+/// it is not necessary for the points to lie on the convex hull. For performance optimization,
+/// this shape should ideally be used for a small number of points (~300).
 /// </summary>
 public class PointCloudShape : RigidBodyShape, ICloneableShape<PointCloudShape>
 {
@@ -24,14 +26,20 @@ public class PointCloudShape : RigidBodyShape, ICloneableShape<PointCloudShape>
     private VertexSupportMap supportMap;
     private JVector shifted;
 
+    /// <inheritdoc cref="PointCloudShape(ReadOnlySpan{JVector})"/>
+    public PointCloudShape(IEnumerable<JVector> vertices) :
+        this(SpanHelper.AsReadOnlySpan(vertices, out _))
+    {
+    }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="PointCloudShape"/> class.
     /// </summary>
-    /// <param name="vertices">
-    /// A list containing all vertices that define the convex hull. The list is not referenced and can be
-    /// modified after passing it to the constructor.
-    /// </param>
-    public PointCloudShape(IReadOnlyList<JVector> vertices)
+    /// <param name="vertices">All vertices that define the convex hull.</param>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <paramref name="vertices"/> is empty.
+    /// </exception>
+    public PointCloudShape(ReadOnlySpan<JVector> vertices)
     {
         supportMap = new VertexSupportMap(vertices);
         UpdateShape();
@@ -82,17 +90,24 @@ public class PointCloudShape : RigidBodyShape, ICloneableShape<PointCloudShape>
         }
     }
 
+    /// <summary>
+    /// Updates the shape's cached mass, inertia, and bounding box.
+    /// </summary>
     public void UpdateShape()
     {
         CalculateMassInertia();
         CalcInitBox();
     }
 
+    /// <summary>
+    /// Recalculates the mass, center of mass, and inertia tensor.
+    /// </summary>
     public void CalculateMassInertia()
     {
         ShapeHelper.CalculateMassInertia(this, out cachedInertia, out cachedCenter, out cachedMass);
     }
 
+    /// <inheritdoc/>
     public override void CalculateMassInertia(out JMatrix inertia, out JVector com, out Real mass)
     {
         inertia = cachedInertia;
@@ -100,6 +115,7 @@ public class PointCloudShape : RigidBodyShape, ICloneableShape<PointCloudShape>
         mass = cachedMass;
     }
 
+    /// <inheritdoc/>
     public override void CalculateBoundingBox(in JQuaternion orientation, in JVector position, out JBoundingBox box)
     {
         JVector halfSize = (Real)0.5 * (cachedBoundingBox.Max - cachedBoundingBox.Min);
@@ -144,12 +160,14 @@ public class PointCloudShape : RigidBodyShape, ICloneableShape<PointCloudShape>
         cachedBoundingBox.Min.Z = res.Z;
     }
 
+    /// <inheritdoc/>
     public override void SupportMap(in JVector direction, out JVector result)
     {
         supportMap.SupportMap(direction, out result);
         result += shifted;
     }
 
+    /// <inheritdoc/>
     public override void GetCenter(out JVector point)
     {
         point = cachedCenter;

@@ -13,45 +13,46 @@ namespace Jitter2.Collision;
 public partial class DynamicTree
 {
     /// <summary>
-    /// Preliminary result of the ray cast.
+    /// Represents the result of a ray cast against the dynamic tree.
     /// </summary>
     public struct RayCastResult
     {
-        public IDynamicTreeProxy Entity;
+        /// <summary>The proxy that was hit.</summary>
+        public IDynamicTreeProxy? Entity;
+
+        /// <summary>The ray parameter at the hit: <c>hitPoint = origin + Lambda * direction</c>.</summary>
         public Real Lambda;
+
+        /// <summary>
+        /// The surface normal at the hit point, or <see cref="JVector.Zero"/> when the ray origin
+        /// is inside the hit shape. Do not use this to test whether a hit occurred.
+        /// </summary>
         public JVector Normal;
     }
 
     /// <summary>
-    /// Post-filter delegate.
+    /// Delegate for filtering ray cast results after the shape intersection test.
     /// </summary>
-    /// <returns>False if the hit should be filtered out.</returns>
+    /// <param name="result">The ray cast result to evaluate.</param>
+    /// <returns><c>false</c> to filter out this hit; <c>true</c> to keep it.</returns>
     public delegate bool RayCastFilterPost(RayCastResult result);
 
     /// <summary>
-    /// Pre-filter delegate.
+    /// Delegate for filtering ray cast candidates before the shape intersection test.
     /// </summary>
-    /// <returns>False if the hit should be filtered out.</returns>
-    public delegate bool RayCastFilterPre(IDynamicTreeProxy result);
+    /// <param name="proxy">The proxy to evaluate.</param>
+    /// <returns><c>false</c> to skip this proxy; <c>true</c> to test it.</returns>
+    public delegate bool RayCastFilterPre(IDynamicTreeProxy proxy);
 
-    private struct Ray
+    private struct Ray(in JVector origin, in JVector direction)
     {
-        public readonly JVector Origin;
-        public readonly JVector Direction;
+        public readonly JVector Origin = origin;
+        public readonly JVector Direction = direction;
 
-        public RayCastFilterPost? FilterPost;
-        public RayCastFilterPre? FilterPre;
+        public RayCastFilterPost? FilterPost = null;
+        public RayCastFilterPre? FilterPre = null;
 
-        public Real Lambda;
-
-        public Ray(in JVector origin, in JVector direction)
-        {
-            Origin = origin;
-            Direction = direction;
-            FilterPost = null;
-            FilterPre = null;
-            Lambda = Real.MaxValue;
-        }
+        public Real Lambda = Real.MaxValue;
     }
 
     /// <summary>
@@ -62,8 +63,12 @@ public partial class DynamicTree
     /// <param name="pre">Optional pre-filter which allows to skip shapes in the detection.</param>
     /// <param name="post">Optional post-filter which allows to skip detections.</param>
     /// <param name="proxy">The shape which was hit.</param>
-    /// <param name="normal">The normal of the surface where the ray hits. Zero if ray does not hit.</param>
-    /// <param name="lambda">Distance from the origin to the ray hit point in units of the ray's direction.</param>
+    /// <param name="normal">
+    /// The surface normal at the hit point. <see cref="JVector.Zero"/> if the ray does not hit,
+    /// or if the ray origin is inside the hit shape. Use the return value to determine whether
+    /// a hit occurred; do not rely on this being non-zero as a hit indicator.
+    /// </param>
+    /// <param name="lambda">Distance from the origin to the hit point in units of the ray direction. Zero if the origin is inside the hit shape.</param>
     /// <returns>True if the ray hits, false otherwise.</returns>
     public bool RayCast(JVector origin, JVector direction, RayCastFilterPre? pre, RayCastFilterPost? post,
         out IDynamicTreeProxy? proxy, out JVector normal, out Real lambda)
@@ -119,7 +124,7 @@ public partial class DynamicTree
         {
             int pop = _stack.Pop();
 
-            ref Node node = ref Nodes[pop];
+            ref Node node = ref nodes[pop];
 
             if (node.IsLeaf)
             {
@@ -141,8 +146,8 @@ public partial class DynamicTree
                 continue;
             }
 
-            ref Node lNode = ref Nodes[node.Left];
-            ref Node rNode = ref Nodes[node.Right];
+            ref Node lNode = ref nodes[node.Left];
+            ref Node rNode = ref nodes[node.Right];
 
             bool lRes = lNode.ExpandedBox.RayIntersect(ray.Origin, ray.Direction, out Real lEnter);
             bool rRes = rNode.ExpandedBox.RayIntersect(ray.Origin, ray.Direction, out Real rEnter);

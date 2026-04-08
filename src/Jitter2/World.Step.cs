@@ -27,23 +27,49 @@ public sealed partial class World
     private readonly SlimBag<Arbiter> deferredArbiters = [];
     private readonly SlimBag<JHandle<ContactData>> brokenArbiters = [];
 
+    /// <summary>
+    /// Profiling buckets for <see cref="DebugTimings"/>, representing stages of <see cref="Step(Real, bool)"/>.
+    /// </summary>
     public enum Timings
     {
+        /// <summary>Time spent in <see cref="PreStep"/> callbacks.</summary>
         PreStep,
+
+        /// <summary>Time spent in narrow phase collision detection and contact generation.</summary>
         NarrowPhase,
+
+        /// <summary>Time spent creating deferred arbiters.</summary>
         AddArbiter,
+
+        /// <summary>Time spent reordering contacts for cache efficiency.</summary>
         ReorderContacts,
+
+        /// <summary>Time spent evaluating body deactivation (sleeping).</summary>
         CheckDeactivation,
+
+        /// <summary>Time spent in substeps: force integration, constraint solving, and velocity integration.</summary>
         Solve,
+
+        /// <summary>Time spent removing broken arbiters.</summary>
         RemoveArbiter,
+
+        /// <summary>Time spent updating contact state after solving.</summary>
         UpdateContacts,
+
+        /// <summary>Time spent finalizing body state and broadphase proxy updates.</summary>
         UpdateBodies,
+
+        /// <summary>Time spent updating the dynamic tree (broadphase).</summary>
         BroadPhase,
+
+        /// <summary>Time spent in <see cref="PostStep"/> callbacks.</summary>
         PostStep,
+
+        /// <summary>Sentinel value for array sizing. Not a real timing bucket.</summary>
         Last
     }
 
-    private Action<Parallel.Batch> integrate;
+    private Action<Parallel.Batch> integrateVelocities;
     private Action<Parallel.Batch> integrateForces;
     private Action<Parallel.Batch> prepareContacts;
     private Action<Parallel.Batch> iterateContacts;
@@ -55,11 +81,10 @@ public sealed partial class World
     private Action<Parallel.Batch> iterateSmallConstraints;
     private Action<Parallel.Batch> updateBodies;
     private Action<IDynamicTreeProxy, IDynamicTreeProxy> detect;
-    
 
     private void InitParallelCallbacks()
     {
-        integrate = Integrate;
+        integrateVelocities = IntegrateVelocities;
         integrateForces = IntegrateForces;
         prepareContacts = PrepareContacts;
         iterateContacts = IterateContacts;
@@ -73,22 +98,30 @@ public sealed partial class World
         detect = Detect;
     }
 
+    private readonly double[] debugTimings = new double[(int)Timings.Last];
+
     /// <summary>
     /// Contains timings for the stages of the last call to <see cref="World.Step(Real, bool)"/>.
-    /// Array elements correspond to the enums in <see cref="Timings"/>. It can be used to identify
-    /// bottlenecks.
+    /// Values are in milliseconds. Index using <c>(int)Timings.XYZ</c>.
     /// </summary>
-    public double[] DebugTimings { get; } = new double[(int)Timings.Last];
+    public ReadOnlySpan<double> DebugTimings => debugTimings;
 
     /// <summary>
     /// Performs a single simulation step.
     /// </summary>
-    /// <param name="dt">The duration of time to simulate. This should remain fixed and not exceed 1/60 of a second.</param>
-    /// <param name="multiThread">Indicates whether multithreading should be used. The behavior of the engine can be modified using <see cref="Parallelization.ThreadPool.Instance"/>.</param>
+    /// <param name="dt">The duration of time to simulate in seconds. Should remain fixed and typically not exceed 1/60 s.</param>
+    /// <param name="multiThread">If <see langword="true"/>, uses the internal thread pool for parallel execution.
+    /// Set to <see langword="false"/> for single-threaded execution (useful for debugging or platforms without threading).</param>
+    /// <remarks>
+    /// The step is divided into <see cref="SubstepCount"/> substeps for improved stability.
+    /// Callbacks (<see cref="PreStep"/>, <see cref="PostStep"/>, etc.) are invoked on the calling thread.
+    /// When <paramref name="multiThread"/> is true, <see cref="BroadPhaseFilter"/> and <see cref="NarrowPhaseFilter"/>
+    /// may be called concurrently from worker threads.
+    /// </remarks>
+    /// <exception cref="ArgumentException">Thrown if <paramref name="dt"/> is negative.</exception>
     public void Step(Real dt, bool multiThread = true)
     {
-        Tracer.ProfileBegin(TraceName.Step);
-
+        ThrowIfDisposed();
         AssertNullBody();
 
         switch (dt)
@@ -99,6 +132,8 @@ public sealed partial class World
                 return; // nothing to do
         }
 
+        Tracer.ProfileBegin(TraceName.Step);
+
         long time;
         double invFrequency = 1.0d / Stopwatch.Frequency;
 
@@ -106,13 +141,13 @@ public sealed partial class World
         {
             long ctime = Stopwatch.GetTimestamp();
             double delta = (ctime - time) * 1000.0d;
-            DebugTimings[(int)type] = delta * invFrequency;
+            debugTimings[(int)type] = delta * invFrequency;
             time = ctime;
         }
 
-        invStepDt = (Real)1.0 / stepDt;
-        substepDt = dt / substeps;
         stepDt = dt;
+        invStepDt = (Real)1.0 / dt;
+        substepDt = dt / substeps;
 
         if (multiThread)
         {
@@ -154,10 +189,12 @@ public sealed partial class World
         // Sub-stepping
         for (int i = 0; i < substeps; i++)
         {
+            PreSubStep?.Invoke(substepDt);
             IntegrateForces(multiThread);                       // FAST SWEEP
-            Solve(multiThread, solverIterations);               // FAST SWEEP
-            Integrate(multiThread);                             // FAST SWEEP
+            SolveVelocities(multiThread, solverIterations);     // FAST SWEEP
+            IntegrateVelocities(multiThread);                   // FAST SWEEP
             RelaxVelocities(multiThread, velocityRelaxations);  // FAST SWEEP
+            PostSubStep?.Invoke(substepDt);
         }
 
         Tracer.ProfileEnd(TraceName.Solve);
@@ -196,6 +233,72 @@ public sealed partial class World
         }
 
         Tracer.ProfileEnd(TraceName.Step);
+    }
+
+    /// <summary>
+    /// Solves the existing contacts and constraints at the velocity level without advancing body transforms.
+    /// </summary>
+    /// <param name="dt">The reference timestep in seconds used to scale bias and softness terms.</param>
+    /// <param name="solverIterations">The number of solver iterations to execute.</param>
+    /// <param name="relaxationIterations">The number of relaxation iterations to execute after solving.</param>
+    /// <param name="multiThread">If <see langword="true"/>, uses the internal thread pool for parallel execution.</param>
+    /// <remarks>
+    /// Unlike <see cref="Step"/>, this method does not perform broadphase or narrowphase collision detection,
+    /// does not integrate forces, and does not integrate positions or orientations. It only processes the
+    /// existing active contacts and constraints already present in the world at the velocity level.
+    /// This is primarily useful after loading a previously saved scene: restore the saved contacts and
+    /// constraints first, then call <see cref="Stabilize"/> to warm-start and solve the restored system
+    /// before resuming normal simulation with <see cref="Step"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// Thrown if <paramref name="dt"/> is negative, <paramref name="solverIterations"/> is less than 1,
+    /// or <paramref name="relaxationIterations"/> is negative.
+    /// </exception>
+    public void Stabilize(Real dt, int solverIterations, int relaxationIterations = 0, bool multiThread = true)
+    {
+        ThrowIfDisposed();
+        AssertNullBody();
+
+        switch (dt)
+        {
+            case < (Real)0.0:
+                throw new ArgumentException("Time step cannot be negative.", nameof(dt));
+            case < Real.Epsilon:
+                return; // nothing to do
+        }
+
+        if (solverIterations < 1)
+        {
+            throw new ArgumentException("Solver iterations can not be smaller than one.", nameof(solverIterations));
+        }
+
+        if (relaxationIterations < 0)
+        {
+            throw new ArgumentException("Relaxation iterations can not be smaller than zero.", nameof(relaxationIterations));
+        }
+
+        stepDt = dt;
+        invStepDt = (Real)1.0 / dt;
+        substepDt = dt / substeps;
+
+        if (multiThread)
+        {
+            ThreadPool.Instance.ResumeWorkers();
+        }
+
+        CheckDeactivation();
+
+        for (int i = 0; i < substeps; i++)
+        {
+            SolveVelocities(multiThread, solverIterations);
+            RelaxVelocities(multiThread, relaxationIterations);
+        }
+
+        if ((ThreadModel == ThreadModelType.Regular || !multiThread)
+            && ThreadPool.InstanceInitialized)
+        {
+            ThreadPool.Instance.PauseWorkers();
+        }
     }
 
     #region Prepare and Solve Contacts and Constraints
@@ -382,7 +485,8 @@ public sealed partial class World
 
             if (constraint.PrepareForIteration == null) continue;
 
-            Debug.Assert(b1.MotionType == MotionType.Dynamic || b2.MotionType == MotionType.Dynamic);
+            Debug.Assert(b1.MotionType == MotionType.Dynamic || b2.MotionType == MotionType.Dynamic,
+                "Invalid constraint: both bodies are non-dynamic.");
 
             if (!TryLockTwoBody(ref b1, ref b2))
             {
@@ -618,26 +722,23 @@ public sealed partial class World
 
     private void RemoveBrokenArbiters()
     {
-        for (int i = 0; i < brokenArbiters.Count; i++)
+        foreach (var handle in brokenArbiters)
         {
-            var handle = brokenArbiters[i];
-            if ((handle.Data.UsageMask & ContactData.MaskContactAll) == 0)
-            {
-                Arbiter arb = arbiters[handle.Data.Key];
+            if ((handle.Data.UsageMask & ContactData.MaskContactAll) != 0) continue;
+            var arb = arbiters[handle.Data.Key];
 
-                AddToActiveList(arb.Body1.InternalIsland);
-                AddToActiveList(arb.Body2.InternalIsland);
+            AddToActiveList(arb.Body1.InternalIsland);
+            AddToActiveList(arb.Body2.InternalIsland);
 
-                memContacts.Free(handle);
-                IslandHelper.ArbiterRemoved(islands, arb);
-                arbiters.Remove(handle.Data.Key);
+            memContacts.Free(handle);
+            IslandHelper.ArbiterRemoved(islands, arb);
+            arbiters.Remove(handle.Data.Key);
 
-                arb.Body1.RaiseEndCollide(arb);
-                arb.Body2.RaiseEndCollide(arb);
+            arb.Body1.RaiseEndCollide(arb);
+            arb.Body2.RaiseEndCollide(arb);
 
-                Arbiter.Pool.Push(arb);
-                arb.Handle = JHandle<ContactData>.Zero;
-            }
+            Arbiter.Pool.Push(arb);
+            arb.Handle = JHandle<ContactData>.Zero;
         }
 
         brokenArbiters.Clear();
@@ -663,9 +764,8 @@ public sealed partial class World
 
     private void HandleDeferredArbiters()
     {
-        for (int i = 0; i < deferredArbiters.Count; i++)
+        foreach (var arb in deferredArbiters)
         {
-            Arbiter arb = deferredArbiters[i];
             IslandHelper.ArbiterCreated(islands, arb);
 
             AddToActiveList(arb.Body1.InternalIsland);
@@ -679,8 +779,12 @@ public sealed partial class World
     }
 
     /// <summary>
-    /// Attempts to lock two bodies. Briefly waits on contention, then backs off if unsuccessful.
+    /// Attempts to lock two rigid bodies. Briefly waits on contention, then backs off if unsuccessful.
+    /// The lock order is determined by memory address to prevent deadlocks.
     /// </summary>
+    /// <param name="b1">Reference to the first rigid body data.</param>
+    /// <param name="b2">Reference to the second rigid body data.</param>
+    /// <returns><see langword="true"/> if both locks were acquired; otherwise, <see langword="false"/>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryLockTwoBody(ref RigidBodyData b1, ref RigidBodyData b2)
     {
@@ -747,8 +851,11 @@ public sealed partial class World
     }
 
     /// <summary>
-    /// Spin-wait loop to prevent accessing a body from multiple threads.
+    /// Acquires locks on two rigid bodies using a spin-wait loop. The lock order is determined
+    /// by memory address to prevent deadlocks.
     /// </summary>
+    /// <param name="b1">Reference to the first rigid body data.</param>
+    /// <param name="b2">Reference to the second rigid body data.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void LockTwoBody(ref RigidBodyData b1, ref RigidBodyData b2)
     {
@@ -783,8 +890,11 @@ public sealed partial class World
     }
 
     /// <summary>
-    /// Spin-wait loop to prevent accessing a body from multiple threads.
+    /// Releases locks on two rigid bodies previously acquired by <see cref="LockTwoBody"/>
+    /// or <see cref="TryLockTwoBody"/>.
     /// </summary>
+    /// <param name="b1">Reference to the first rigid body data.</param>
+    /// <param name="b2">Reference to the second rigid body data.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void UnlockTwoBody(ref RigidBodyData b1, ref RigidBodyData b2)
     {
@@ -846,7 +956,7 @@ public sealed partial class World
         return omega - JVector.Transform(f, invJacobian);
     }
 
-    private void Integrate(Parallel.Batch batch)
+    private void IntegrateVelocities(Parallel.Batch batch)
     {
         var span = memRigidBodies.Active[batch.Start..batch.End];
 
@@ -895,7 +1005,7 @@ public sealed partial class World
         }
     }
 
-    private void Solve(bool multiThread, int iterations)
+    private void SolveVelocities(bool multiThread, int iterations)
     {
         if (multiThread)
         {
@@ -958,15 +1068,15 @@ public sealed partial class World
         }
     }
 
-    private void Integrate(bool multiThread)
+    private void IntegrateVelocities(bool multiThread)
     {
         if (multiThread)
         {
-            memRigidBodies.ParallelForBatch(256, integrate);
+            memRigidBodies.ParallelForBatch(256, integrateVelocities);
         }
         else
         {
-            Integrate(new Parallel.Batch(0, memRigidBodies.Active.Length));
+            IntegrateVelocities(new Parallel.Batch(0, memRigidBodies.Active.Length));
         }
     }
 

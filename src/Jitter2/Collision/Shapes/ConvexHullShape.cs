@@ -6,14 +6,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
+using Jitter2.DataStructures;
 using Jitter2.LinearMath;
 
 namespace Jitter2.Collision.Shapes;
 
 /// <summary>
-/// Represents a generic convex shape.
+/// Represents a convex hull shape defined by a set of triangles.
 /// </summary>
 public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
 {
@@ -53,24 +53,28 @@ public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
 
     private CHullVector[] vertices = null!;
     private CHullTriangle[] indices = null!;
-    private List<ushort> neighborList = null!;
+    private ushort[] neighborList = null!;
 
     private JVector shifted;
 
     /// <summary>
     /// Initializes a new instance of the ConvexHullShape class, creating a convex hull.
     /// </summary>
-    /// <param name="triangles">A list containing all vertices defining the convex hull. The vertices must strictly lie
-    /// on the surface of the convex hull to avoid incorrect results or indefinite hangs in the collision algorithm.
-    /// Note that the passed triangle list is not referenced and can be modified after calling the constructor
-    /// without side effects.</param>
-    public ConvexHullShape(IReadOnlyList<JTriangle> triangles)
+    /// <param name="triangles">All vertices defining the convex hull. The vertices must strictly lie
+    /// on the surface of the convex hull to avoid incorrect results or indefinite hangs in the collision algorithm.</param>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <paramref name="triangles"/> is empty.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the convex hull consists of more than <see cref="ushort.MaxValue"/> vertices.
+    /// </exception>
+    public ConvexHullShape(ReadOnlySpan<JTriangle> triangles)
     {
-        Build(triangles);
-    }
+        if (triangles.Length == 0)
+        {
+            throw new ArgumentException("Triangle set must contain at least one triangle.", nameof(triangles));
+        }
 
-    private void Build(IReadOnlyList<JTriangle> triangles)
-    {
         Dictionary<CHullVector, ushort> tmpIndices = new();
         List<CHullVector> tmpVertices = [];
 
@@ -78,10 +82,10 @@ public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
         {
             if (tmpIndices.TryGetValue(v, out ushort result)) return result;
 
-            if (tmpVertices.Count > ushort.MaxValue)
+            if (tmpVertices.Count >= ushort.MaxValue)
             {
                 throw new InvalidOperationException(
-                    $"The convex hull consists of too many triangles (>{ushort.MaxValue})");
+                    $"The convex hull consists of too many vertices (>{ushort.MaxValue})");
             }
 
             result = (ushort)tmpVertices.Count;
@@ -99,9 +103,9 @@ public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
         }
 
         var tmpNeighbors = new List<ushort>[tmpVertices.Count];
-        indices = new CHullTriangle[triangles.Count];
+        indices = new CHullTriangle[triangles.Length];
 
-        for (int i = 0; i < triangles.Count; i++)
+        for (int i = 0; i < triangles.Length; i++)
         {
             JTriangle tti = triangles[i];
 
@@ -111,32 +115,34 @@ public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
 
             indices[i] = new CHullTriangle(a, b, c);
 
-            tmpNeighbors[a] ??= new List<ushort>();
-            tmpNeighbors[b] ??= new List<ushort>();
-            tmpNeighbors[c] ??= new List<ushort>();
-
-            tmpNeighbors[a].Add(b);
+            (tmpNeighbors[a] ??= []).Add(b);
             tmpNeighbors[a].Add(c);
-            tmpNeighbors[b].Add(a);
+
+            (tmpNeighbors[b] ??= []).Add(a);
             tmpNeighbors[b].Add(c);
-            tmpNeighbors[c].Add(a);
+
+            (tmpNeighbors[c] ??= []).Add(a);
             tmpNeighbors[c].Add(b);
         }
 
-        neighborList = new List<ushort>();
+        // Estimate capacity to avoid resizing (Euler characteristic ~ 6 neighbors per vertex)
+        var finalNeighbors = new List<ushort>(tmpVertices.Count * 6);
 
         var tmpVerticesSpan = CollectionsMarshal.AsSpan(tmpVertices);
 
         for (int i = 0; i < tmpVerticesSpan.Length; i++)
         {
             ref var element = ref tmpVerticesSpan[i];
-            element.NeighborMinIndex = (ushort)neighborList.Count;
-            neighborList.AddRange(tmpNeighbors[i].Distinct());
-            element.NeighborMaxIndex = (ushort)neighborList.Count;
-            tmpNeighbors[i].Clear();
+            element.NeighborMinIndex = (ushort)finalNeighbors.Count;
+            AddDistinct(tmpNeighbors[i], finalNeighbors);
+            element.NeighborMaxIndex = (ushort)finalNeighbors.Count;
+
+            // Help GC
+            tmpNeighbors[i] = null!;
         }
 
         vertices = tmpVertices.ToArray();
+        neighborList = finalNeighbors.ToArray();
 
         tmpIndices.Clear();
         tmpVertices.Clear();
@@ -144,8 +150,38 @@ public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
         UpdateShape();
     }
 
+    /// <inheritdoc cref="ConvexHullShape(ReadOnlySpan{JTriangle})"/>
+    public ConvexHullShape(IEnumerable<JTriangle> triangles) :
+        this(SpanHelper.AsReadOnlySpan(triangles, out _))
+    {
+    }
+
     private ConvexHullShape()
     {
+    }
+
+    /// <summary>
+    /// Helper to sort and add unique elements from source to destination.
+    /// Replaces LINQ Distinct() for better performance and zero allocations.
+    /// </summary>
+    private static void AddDistinct(List<ushort> source, List<ushort> destination)
+    {
+        if (source == null || source.Count == 0) return;
+
+        source.Sort();
+
+        ushort previous = source[0];
+        destination.Add(previous);
+
+        for (int i = 1; i < source.Count; i++)
+        {
+            ushort current = source[i];
+            if (current != previous)
+            {
+                destination.Add(current);
+                previous = current;
+            }
+        }
     }
 
     /// <summary>
@@ -170,6 +206,9 @@ public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
         return result;
     }
 
+    /// <summary>
+    /// Gets or sets the shift applied to the convex hull vertices.
+    /// </summary>
     public JVector Shift
     {
         get => shifted;
@@ -180,12 +219,16 @@ public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
         }
     }
 
+    /// <summary>
+    /// Updates the shape's cached mass, inertia, and bounding box.
+    /// </summary>
     public void UpdateShape()
     {
         CalculateMassInertia();
         CalcInitBox();
     }
 
+    /// <inheritdoc/>
     public override void CalculateMassInertia(out JMatrix inertia, out JVector com, out Real mass)
     {
         inertia = cachedInertia;
@@ -193,6 +236,9 @@ public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
         mass = cachedMass;
     }
 
+    /// <summary>
+    /// Recalculates the mass, center of mass, and inertia tensor from the convex hull triangles.
+    /// </summary>
     public void CalculateMassInertia()
     {
         cachedCenter = JVector.Zero;
@@ -249,6 +295,7 @@ public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
         cachedCenter *= (Real)1.0 / cachedMass;
     }
 
+    /// <inheritdoc/>
     public override void CalculateBoundingBox(in JQuaternion orientation, in JVector position, out JBoundingBox box)
     {
         JVector halfSize = (Real)0.5 * (cachedBoundingBox.Max - cachedBoundingBox.Min);
@@ -305,7 +352,7 @@ public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
         var min = vertices[current].NeighborMinIndex;
         var max = vertices[current].NeighborMaxIndex;
 
-        const Real epsilonIncrement = 1e-12f;
+        const Real epsilonIncrement = (Real)1e-12;
 
         for (int i = min; i < max; i++)
         {
@@ -367,11 +414,13 @@ public class ConvexHullShape : RigidBodyShape, ICloneableShape<ConvexHullShape>
         return current;
     }
 
+    /// <inheritdoc/>
     public override void SupportMap(in JVector direction, out JVector result)
     {
         InternalSupportMap(direction, out result);
     }
 
+    /// <inheritdoc/>
     public override void GetCenter(out JVector point)
     {
         point = cachedCenter;

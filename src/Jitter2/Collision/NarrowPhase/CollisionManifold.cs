@@ -14,9 +14,11 @@ namespace Jitter2.Collision;
 
 /// <summary>
 /// Represents a contact manifold between two convex shapes, storing up to six contact points.
-/// The manifold is constructed using the GJK-based support mapping of both shapes projected
-/// along perturbed normals distributed in a hexagonal pattern around the collision normal.
 /// </summary>
+/// <remarks>
+/// The manifold is constructed by projecting support points along perturbed normals
+/// in a hexagonal pattern around the collision normal, then clipping to find the contact region.
+/// </remarks>
 public unsafe struct CollisionManifold
 {
     private fixed Real manifoldData[12*3];
@@ -31,9 +33,19 @@ public unsafe struct CollisionManifold
     private static readonly Real[] hexagonVertices = [(Real)1.0, (Real)0.0, (Real)0.5, Sqrt3Over2, -(Real)0.5, Sqrt3Over2,
         -(Real)1.0, (Real)0.0, -(Real)0.5, -Sqrt3Over2, (Real)0.5, -Sqrt3Over2];
 
+    /// <summary>
+    /// Gets a span of contact points on shape A. Valid indices are <c>[0, Count)</c>.
+    /// </summary>
     public Span<JVector> ManifoldA => MemoryMarshal.CreateSpan(ref Unsafe.As<Real, JVector>(ref manifoldData[0]), 6);
+
+    /// <summary>
+    /// Gets a span of contact points on shape B. Valid indices are <c>[0, Count)</c>.
+    /// </summary>
     public Span<JVector> ManifoldB => MemoryMarshal.CreateSpan(ref Unsafe.As<Real, JVector>(ref manifoldData[18]), 6);
 
+    /// <summary>
+    /// Gets the number of contact points in the manifold.
+    /// </summary>
     public readonly int Count => manifoldCount;
 
     private void PushLeft(Span<JVector> left, in JVector v)
@@ -70,11 +82,25 @@ public unsafe struct CollisionManifold
         right[rightCount++] = v;
     }
 
+    /// <summary>
+    /// Builds the contact manifold between two shapes given their transforms and initial contact.
+    /// </summary>
+    /// <typeparam name="Ta">The type of support shape A.</typeparam>
+    /// <typeparam name="Tb">The type of support shape B.</typeparam>
+    /// <param name="shapeA">The first shape.</param>
+    /// <param name="shapeB">The second shape.</param>
+    /// <param name="quaternionA">Orientation of shape A.</param>
+    /// <param name="quaternionB">Orientation of shape B.</param>
+    /// <param name="positionA">Position of shape A.</param>
+    /// <param name="positionB">Position of shape B.</param>
+    /// <param name="pA">Initial contact point on shape A.</param>
+    /// <param name="pB">Initial contact point on shape B.</param>
+    /// <param name="normal">The collision normal (from B to A).</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [SkipLocalsInit]
-    public void BuildManifold<TA,TB>(TA shapeA, TB shapeB, in JQuaternion quaternionA, in JQuaternion quaternionB,
+    public void BuildManifold<Ta,Tb>(Ta shapeA, Tb shapeB, in JQuaternion quaternionA, in JQuaternion quaternionB,
         in JVector positionA, in JVector positionB, in JVector pA, in JVector pB, in JVector normal)
-        where TA : ISupportMappable where TB : ISupportMappable
+        where Ta : ISupportMappable where Tb : ISupportMappable
     {
         // Reset
         leftCount = 0;
@@ -185,10 +211,20 @@ public unsafe struct CollisionManifold
         mB[manifoldCount++] = pB;
     } // BuildManifold
 
+    /// <summary>
+    /// Builds the contact manifold between two rigid body shapes using their current transforms.
+    /// </summary>
+    /// <typeparam name="Ta">The type of shape A.</typeparam>
+    /// <typeparam name="Tb">The type of shape B.</typeparam>
+    /// <param name="shapeA">The first rigid body shape.</param>
+    /// <param name="shapeB">The second rigid body shape.</param>
+    /// <param name="pA">Initial contact point on shape A.</param>
+    /// <param name="pB">Initial contact point on shape B.</param>
+    /// <param name="normal">The collision normal (from B to A).</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [SkipLocalsInit]
-    public void BuildManifold<TA,TB>(TA shapeA, TB shapeB,
-        in JVector pA, in JVector pB, in JVector normal) where TA : RigidBodyShape where TB : RigidBodyShape
+    public void BuildManifold<Ta,Tb>(Ta shapeA, Tb shapeB,
+        in JVector pA, in JVector pB, in JVector normal) where Ta : RigidBodyShape where Tb : RigidBodyShape
     {
         BuildManifold(shapeA, shapeB, shapeA.RigidBody.Orientation, shapeB.RigidBody.Orientation,
             shapeA.RigidBody.Position, shapeB.RigidBody.Position, pA, pB, normal);

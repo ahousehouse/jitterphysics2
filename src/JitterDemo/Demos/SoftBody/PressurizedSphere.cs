@@ -1,5 +1,3 @@
-#pragma warning disable CS8602
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +6,6 @@ using Jitter2.Collision;
 using Jitter2.Collision.Shapes;
 using Jitter2.LinearMath;
 using Jitter2.SoftBodies;
-using JitterDemo.Renderer;
 
 namespace JitterDemo;
 
@@ -16,35 +13,10 @@ public class SoftBodySphere : SoftBodyCloth
 {
     public float Pressure { get; set; } = 400.0f;
 
-    private class UnitSphere : ISupportMappable
-    {
-        public void SupportMap(in JVector direction, out JVector result)
-        {
-            result = JVector.Normalize(direction);
-        }
-
-        public void GetCenter(out JVector point)
-        {
-            throw new NotImplementedException();
-        }
-    }
-
     private static IEnumerable<JTriangle> GenSphereTriangles(JVector offset)
     {
-        return ShapeHelper.MakeHull(new UnitSphere(), 4)
+        return ShapeHelper.Tessellate(SupportPrimitives.CreateSphere(1.0f), 4)
             .Select(t => new JTriangle(t.V0 + offset, t.V1 + offset, t.V2 + offset));
-    }
-
-    private static IEnumerable<JTriangle> GenSphereTrianglesFromMesh(JVector offset, string filename)
-    {
-        Mesh m = Mesh.LoadMesh(filename);
-        foreach (var tri in m.Indices)
-        {
-            yield return new JTriangle(Conversion.ToJitterVector(m.Vertices[tri.T1].Position) + offset,
-                Conversion.ToJitterVector(m.Vertices[tri.T2].Position) + offset,
-                Conversion.ToJitterVector(m.Vertices[tri.T3].Position) + offset
-            );
-        }
     }
 
     public SoftBodySphere(World world, JVector offset) : base(world, GenSphereTriangles(offset))
@@ -57,7 +29,7 @@ public class SoftBodySphere : SoftBodyCloth
 
         foreach (var spring in Springs)
         {
-            (spring as SpringConstraint).Softness = 0.5f;
+            ((SpringConstraint)spring).Softness = 0.5f;
         }
     }
 

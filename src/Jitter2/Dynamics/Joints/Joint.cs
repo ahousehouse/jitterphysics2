@@ -9,9 +9,12 @@ using Jitter2.DataStructures;
 
 namespace Jitter2.Dynamics.Constraints;
 
+/// <summary>
+/// Base class for joints, which are composite constraints built from multiple <see cref="Constraint"/> instances.
+/// </summary>
 public class Joint : IDebugDrawable
 {
-    private readonly List<Constraint> constraints = new(4);
+    private readonly List<Constraint> constraints = new(2);
     public ReadOnlyList<Constraint> Constraints => new (constraints);
 
     /// <summary>
