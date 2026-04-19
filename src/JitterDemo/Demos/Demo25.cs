@@ -225,7 +225,7 @@ public class Demo25 : IDemo, IDrawUpdate
     public string Name => "Heightmap (Custom Collision)";
     public string Description => "Procedural heightmap with custom per-triangle collision and raycasting.";
 
-    private Cloth terrainRenderer = null!;
+    private MutableMeshDrawable terrainRenderer = null!;
 
     // Only for rendering...
     TriangleVertexIndex[] GetIndices(int width, int height)
@@ -272,14 +272,15 @@ public class Demo25 : IDemo, IDrawUpdate
         world.DynamicTree.AddProxy(tester, false);
 
         // Only for rendering...
-        terrainRenderer = RenderWindow.Instance.CSMRenderer.GetInstance<Cloth>();
-        terrainRenderer.SetIndices(GetIndices(Heightmap.Width, Heightmap.Height));
-        FillVertices(terrainRenderer.Vertices, Heightmap.Width, Heightmap.Height);
-        terrainRenderer.VerticesChanged();
+        terrainRenderer = RenderWindow.Instance.GetDrawable<MutableMeshDrawable>();
+        terrainRenderer.SetTriangles(GetIndices(Heightmap.Width, Heightmap.Height));
+        terrainRenderer.Material = ClothMaterial.Create();
+        FillVertices(terrainRenderer.Mesh.Vertices, Heightmap.Width, Heightmap.Height);
+        terrainRenderer.RefreshGeometry();
     }
 
     public void DrawUpdate()
     {
-        terrainRenderer.PushMatrix(Matrix4.Identity);
+        terrainRenderer.Push(Matrix4.Identity);
     }
 }

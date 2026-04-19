@@ -10,18 +10,29 @@ using JitterDemo.Renderer.OpenGL;
 
 namespace JitterDemo;
 
-public class CustomSupportMapInstance<T> : CSMInstance where T : Shape, new()
+public class CustomSupportMapInstance<T> : InstancedDrawable where T : Shape, new()
 {
-    public override (Vertex[] vertices, TriangleVertexIndex[] indices) ProvideVertices()
+    public CustomSupportMapInstance() : base(Tessellate())
     {
-        T es = new();
+        Material = new Material
+        {
+            Tint = Vector3.Zero,
+            Specular = new Vector3(0.1f, 0.1f, 0.1f),
+            Shininess = 128f,
+            Alpha = 1f,
+            VertexColorWeight = 0.7f,
+            TextureWeight = 0f
+        };
+    }
 
+    private static Mesh Tessellate()
+    {
+        T shape = new();
         List<Vertex> verts = new();
         List<TriangleVertexIndex> inds = new();
 
         int idx = 0;
-
-        foreach (var triangle in ShapeHelper.Tessellate(es))
+        foreach (var triangle in ShapeHelper.Tessellate(shape))
         {
             JVector normal = (triangle.V1 - triangle.V0) % (triangle.V2 - triangle.V0);
             JVector.NormalizeInPlace(ref normal);
@@ -34,13 +45,7 @@ public class CustomSupportMapInstance<T> : CSMInstance where T : Shape, new()
             idx += 3;
         }
 
-        return (verts.ToArray(), inds.ToArray());
-    }
-
-    public override void LightPass(PhongShader shader)
-    {
-        shader.MaterialProperties.ColorMixing.Set(0.7f, 0, 0);
-        base.LightPass(shader);
+        return new Mesh(verts.ToArray(), inds.ToArray());
     }
 }
 
@@ -182,9 +187,9 @@ public class Demo14 : IDemo, IDrawUpdate
 
     public void DrawUpdate()
     {
-        var cesd = pg.CSMRenderer.GetInstance<CustomSupportMapInstance<EllipsoidShape>>();
-        var rbsd = pg.CSMRenderer.GetInstance<CustomSupportMapInstance<DoubleSphereShape>>();
-        var icsd = pg.CSMRenderer.GetInstance<CustomSupportMapInstance<Icosahedron>>();
+        var cesd = pg.GetDrawable<CustomSupportMapInstance<EllipsoidShape>>();
+        var rbsd = pg.GetDrawable<CustomSupportMapInstance<DoubleSphereShape>>();
+        var icsd = pg.GetDrawable<CustomSupportMapInstance<Icosahedron>>();
 
         foreach (var body in demoBodies)
         {
@@ -194,13 +199,13 @@ public class Demo14 : IDemo, IDrawUpdate
             switch (body.Shapes[0])
             {
                 case EllipsoidShape:
-                    cesd.PushMatrix(Conversion.FromJitter(body), color);
+                    cesd.Push(Conversion.FromJitter(body), color);
                     break;
                 case DoubleSphereShape:
-                    rbsd.PushMatrix(Conversion.FromJitter(body), color);
+                    rbsd.Push(Conversion.FromJitter(body), color);
                     break;
                 case Icosahedron:
-                    icsd.PushMatrix(Conversion.FromJitter(body), color);
+                    icsd.Push(Conversion.FromJitter(body), color);
                     break;
             }
         }

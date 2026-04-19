@@ -19,11 +19,9 @@ public static class CarTextureCache
             {
                 carTexture = new Texture2D();
                 string filename = Path.Combine("assets", "car.tga");
-
-                Image.LoadImage(filename).FixedData((img, ptr) => { carTexture.LoadImage(ptr, img.Width, img.Height); });
-
-                carTexture.SetWrap(Texture.Wrap.Repeat);
-                carTexture.SetAnisotropicFiltering(Texture.Anisotropy.Filter_8x);
+                Image.LoadImage(filename).FixedData((img, ptr) => carTexture.LoadImage(ptr, img.Width, img.Height));
+                carTexture.SetWrap(TextureWrap.Repeat);
+                carTexture.SetAnisotropy(Anisotropy.X8);
             }
 
             return carTexture;
@@ -31,72 +29,52 @@ public static class CarTextureCache
     }
 }
 
-public class WheelMesh : TriangleMesh
+public class WheelMesh : TriangleMeshDrawable
 {
     public WheelMesh() : base("wheel.obj")
     {
-    }
-
-    public override void LightPass(PhongShader shader)
-    {
-        shader.MaterialProperties.SetDefaultMaterial();
-        shader.MaterialProperties.ColorMixing.Set(0.05f, 0, 1);
-
-        shader.MaterialProperties.Specular.Set(1, 1, 1);
-        shader.MaterialProperties.Shininess.Set(1000);
-
-        base.LightPass(shader);
-    }
-
-    public override void Load()
-    {
-        Texture = CarTextureCache.CarTexture;
-        base.Load();
+        Material = new Material
+        {
+            Tint = Vector3.Zero,
+            Specular = new Vector3(1, 1, 1),
+            Shininess = 1000f,
+            Alpha = 1f,
+            VertexColorWeight = 0.05f,
+            TextureWeight = 1f,
+            Texture = CarTextureCache.CarTexture
+        };
     }
 }
 
-public class CarMesh : MultiMesh
+public class CarMesh : TriangleMeshDrawable
 {
-    public CarMesh() : base("./assets/car.obj")
+    public CarMesh() : base("car.obj")
     {
-    }
+        // Default covers the chassis group.
+        Material = new Material
+        {
+            Tint = Vector3.Zero,
+            Specular = new Vector3(1, 1, 1),
+            Shininess = 1000f,
+            Alpha = 1f,
+            VertexColorWeight = 0.1f,
+            TextureWeight = 1.2f,
+            Texture = CarTextureCache.CarTexture
+        };
 
-    public override void LightPass(PhongShader shader)
-    {
-        if (mesh.Groups.Length == 0) return;
-
-        Texture?.Bind(3);
-
-        shader.MaterialProperties.SetDefaultMaterial();
-
-        Vao.Bind();
-
-        int sof = sizeof(float);
-        Mesh.Group mg;
-
-        // chassis
-        mg = mesh.Groups[1];
-        shader.MaterialProperties.ColorMixing.Set(0.1f, 0, 1.2f);
-        shader.MaterialProperties.Shininess.Set(1000);
-        shader.MaterialProperties.Specular.Set(1, 1, 1);
-        GLDevice.DrawElementsInstanced(DrawMode.Triangles, 3 * (mg.ToExclusive - mg.FromInclusive),
-            IndexType.UnsignedInt, mg.FromInclusive * sof * 3, Count);
-
-        // glass
-        mg = mesh.Groups[0];
-        shader.MaterialProperties.ColorMixing.Set(0, 1, 0);
-        shader.MaterialProperties.Color.Set(0.6f, 0.6f, 0.6f);
-        shader.MaterialProperties.Alpha.Set(0.6f);
-        shader.MaterialProperties.Shininess.Set(1000.0f);
-        GLDevice.DrawElementsInstanced(DrawMode.Triangles, 3 * (mg.ToExclusive - mg.FromInclusive),
-            IndexType.UnsignedInt, mg.FromInclusive * sof * 3, Count);
-        shader.MaterialProperties.Alpha.Set(1.0f);
-    }
-
-    public override void Load()
-    {
-        Texture = CarTextureCache.CarTexture;
-        base.Load();
+        // Group 0 is the glass canopy — translucent, no texture.
+        Groups = new[]
+        {
+            new MaterialSlot(0, new Material
+            {
+                Tint = new Vector3(0.6f, 0.6f, 0.6f),
+                Specular = new Vector3(1, 1, 1),
+                Shininess = 1000f,
+                Alpha = 0.6f,
+                VertexColorWeight = 0f,
+                TextureWeight = 0f
+            })
+        };
     }
 }
 
@@ -127,18 +105,17 @@ public class Demo06 : IDemo, IDrawUpdate
 
     public void DrawUpdate()
     {
-        var cm = RenderWindow.Instance.CSMRenderer.GetInstance<CarMesh>();
-        cm.PushMatrix(Conversion.FromJitter(defaultCar.Body) *
-                      MatrixHelper.CreateTranslation(0, -0.3f, 0.8f));
+        var cm = RenderWindow.Instance.GetDrawable<CarMesh>();
+        cm.Push(Conversion.FromJitter(defaultCar.Body) *
+                MatrixHelper.CreateTranslation(0, -0.3f, 0.8f));
 
-        var whr = RenderWindow.Instance.CSMRenderer.GetInstance<WheelMesh>();
+        var whr = RenderWindow.Instance.GetDrawable<WheelMesh>();
 
         for (int i = 0; i < 4; i++)
         {
             Wheel wh = defaultCar.Wheels[i];
 
             Matrix4 rotate = Matrix4.Identity;
-
             if (i == 1 || i == 3) rotate = MatrixHelper.CreateRotationY(MathF.PI);
 
             Matrix4 whm = Conversion.FromJitter(defaultCar.Body) *
@@ -147,22 +124,21 @@ public class Demo06 : IDemo, IDrawUpdate
                           MatrixHelper.CreateRotationX(-wh.WheelRotation) *
                           rotate;
 
-            whr.PushMatrix(whm);
+            whr.Push(whm);
         }
 
         float steer, accelerate;
         var kb = Keyboard.Instance;
 
-        if (kb.IsKeyDown(Keyboard.Key.Up)) accelerate = 1.0f;
-        else if (kb.IsKeyDown(Keyboard.Key.Down)) accelerate = -1.0f;
-        else accelerate = 0.0f;
+        if (kb.IsKeyDown(Keyboard.Key.Up)) accelerate = 1f;
+        else if (kb.IsKeyDown(Keyboard.Key.Down)) accelerate = -1f;
+        else accelerate = 0f;
 
         if (kb.IsKeyDown(Keyboard.Key.Left)) steer = 1;
         else if (kb.IsKeyDown(Keyboard.Key.Right)) steer = -1;
-        else steer = 0.0f;
+        else steer = 0f;
 
         defaultCar.SetInput(accelerate, steer);
-
-        defaultCar.Step(1.0f / 100.0f);
+        defaultCar.Step(1f / 100f);
     }
 }

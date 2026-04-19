@@ -1,134 +1,83 @@
 using JitterDemo.Renderer.OpenGL;
-using JitterDemo.Renderer.OpenGL.Native;
 
 namespace JitterDemo.Renderer;
 
-public class SkyboxShader : BasicShader
+public sealed class Skybox
 {
-    public UniformMatrix4 Projection { get; }
-    public UniformMatrix4 View { get; }
-
-    public SkyboxShader() : base(vshader, fshader)
-    {
-        Projection = GetUniform<UniformMatrix4>("projection");
-        View = GetUniform<UniformMatrix4>("view");
-    }
-
-    private static readonly string vshader = @"
-        #version 330 core
-        layout (location = 0) in vec3 aPos;
-
-        out vec3 TexCoords;
-
-        uniform mat4 projection;
-        uniform mat4 view;
-
-        void main()
-        {
-            TexCoords = aPos;
-            gl_Position = projection * mat4(mat3(view)) * vec4(aPos, 1.0);
-        }  
-        ";
-
-    private static readonly string fshader = @"
-        #version 330 core
-        out vec4 FragColor;
-
-        in vec3 TexCoords;
-
-        uniform samplerCube skybox;
-
-        void main()
-        {   
-            vec3 blue = vec3(66.0f / 255.0f, 135.0f / 255.0f, 245.0f / 255.0f);
-            float ddot = max(dot(TexCoords/length(TexCoords),vec3(0,1,1))+0.4f,0);
-            FragColor = vec4(blue*0.9+vec3(1,1,1)*ddot*0.1f,1);
-        }
-        ";
-}
-
-public class Skybox
-{
-    private VertexArrayObject vao = null!;
-    private SkyboxShader shader = null!;
-    private CubemapTexture cmTexture = null!;
-
-    private static float[] VertexBuffer()
-    {
-        return new[]
-        {
-            // positions          
-            -1.0f, 1.0f, -1.0f,
-            -1.0f, -1.0f, -1.0f,
-            1.0f, -1.0f, -1.0f,
-            1.0f, -1.0f, -1.0f,
-            1.0f, 1.0f, -1.0f,
-            -1.0f, 1.0f, -1.0f,
-
-            -1.0f, -1.0f, 1.0f,
-            -1.0f, -1.0f, -1.0f,
-            -1.0f, 1.0f, -1.0f,
-            -1.0f, 1.0f, -1.0f,
-            -1.0f, 1.0f, 1.0f,
-            -1.0f, -1.0f, 1.0f,
-
-            1.0f, -1.0f, -1.0f,
-            1.0f, -1.0f, 1.0f,
-            1.0f, 1.0f, 1.0f,
-            1.0f, 1.0f, 1.0f,
-            1.0f, 1.0f, -1.0f,
-            1.0f, -1.0f, -1.0f,
-
-            -1.0f, -1.0f, 1.0f,
-            -1.0f, 1.0f, 1.0f,
-            1.0f, 1.0f, 1.0f,
-            1.0f, 1.0f, 1.0f,
-            1.0f, -1.0f, 1.0f,
-            -1.0f, -1.0f, 1.0f,
-
-            -1.0f, 1.0f, -1.0f,
-            1.0f, 1.0f, -1.0f,
-            1.0f, 1.0f, 1.0f,
-            1.0f, 1.0f, 1.0f,
-            -1.0f, 1.0f, 1.0f,
-            -1.0f, 1.0f, -1.0f,
-
-            -1.0f, -1.0f, -1.0f,
-            -1.0f, -1.0f, 1.0f,
-            1.0f, -1.0f, -1.0f,
-            1.0f, -1.0f, -1.0f,
-            -1.0f, -1.0f, 1.0f,
-            1.0f, -1.0f, 1.0f
-        };
-    }
+    private Vao vao = null!;
+    private Shader shader = null!;
+    private CubemapTexture cubemap = null!;
 
     public void Load()
     {
-        shader = new SkyboxShader();
+        shader = new Shader(Vs, Fs);
+        vao = new Vao();
 
-        vao = new VertexArrayObject();
+        var vertexBuffer = GpuBuffer.Vertex();
+        vertexBuffer.Upload<float>(CubeVertices);
+        vao.Attrib(0, vertexBuffer, 3, AttribType.Float, 3 * sizeof(float), 0);
 
-        ArrayBuffer ab0 = new();
-        ab0.SetData(VertexBuffer());
-
-        int sof = sizeof(float);
-        vao.VertexAttributes[0].Set(ab0, 3, VertexAttributeType.Float, false, 3 * sof, 0);
-
-        cmTexture = new CubemapTexture();
+        cubemap = new CubemapTexture();
     }
 
-    public void Draw()
+    public void Draw(Camera camera)
     {
-        Camera camera = RenderWindow.Instance.Camera;
+        GLDevice.DepthMask(false);
+        GLDevice.CullFace(CullMode.Back);
 
-        GL.DepthMask(false);
-        GLDevice.SetCullFaceMode(CullMode.Back);
         shader.Use();
-        shader.View.Set(camera.ViewMatrix);
-        shader.Projection.Set(camera.ProjectionMatrix);
+        shader.Set("uView", camera.ViewMatrix);
+        shader.Set("uProjection", camera.ProjectionMatrix);
+
         vao.Bind();
-        cmTexture.Bind();
-        GL.DrawArrays(GLC.TRIANGLES, 0, 36);
-        GL.DepthMask(true);
+        cubemap.Bind();
+        GLDevice.DrawArrays(DrawMode.Triangles, 0, 36);
+
+        GLDevice.DepthMask(true);
     }
+
+    private static readonly float[] CubeVertices =
+    {
+        -1.0f,  1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f
+    };
+
+    private const string Vs = @"
+#version 330 core
+layout(location = 0) in vec3 aPos;
+
+out vec3 vDir;
+
+uniform mat4 uProjection;
+uniform mat4 uView;
+
+void main()
+{
+    vDir = aPos;
+    gl_Position = uProjection * mat4(mat3(uView)) * vec4(aPos, 1.0);
+}
+";
+
+    private const string Fs = @"
+#version 330 core
+in vec3 vDir;
+out vec4 FragColor;
+
+void main()
+{
+    vec3 blue = vec3(66.0/255.0, 135.0/255.0, 245.0/255.0);
+    float d = max(dot(vDir / length(vDir), vec3(0, 1, 1)) + 0.4, 0.0);
+    FragColor = vec4(blue * 0.9 + vec3(1) * d * 0.1, 1.0);
+}
+";
 }

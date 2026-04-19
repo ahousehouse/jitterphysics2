@@ -7,21 +7,22 @@ using Jitter2.Dynamics;
 using Jitter2.LinearMath;
 using JitterDemo.Renderer;
 using JitterDemo.Renderer.OpenGL;
-using TriangleMesh = JitterDemo.Renderer.TriangleMesh;
 
 namespace JitterDemo;
 
-public class Dust : TriangleMesh
+public class Dust : TriangleMeshDrawable
 {
     public Dust() : base("level.obj", 0.8f)
     {
-    }
-
-    public override void LightPass(PhongShader shader)
-    {
-        shader.MaterialProperties.SetDefaultMaterial();
-        shader.MaterialProperties.ColorMixing.Set(1.2f, 0, 0.5f);
-        base.LightPass(shader);
+        Material = new Material
+        {
+            Tint = Vector3.Zero,
+            Specular = new Vector3(0.1f, 0.1f, 0.1f),
+            Shininess = 128f,
+            Alpha = 1f,
+            VertexColorWeight = 1.2f,
+            TextureWeight = 0.5f
+        };
     }
 }
 
@@ -31,7 +32,7 @@ public class Demo05 : IDemo, IDrawUpdate
     public string Description => "Triangle-mesh level loaded from an OBJ file with a player character.";
     public string Controls => "Arrow Keys - Move player\nLeft Ctrl - Jump\nO - Toggle debug draw";
 
-    private TriangleMesh tm = null!;
+    private Dust tm = null!;
 
     private Player player = null!;
 
@@ -50,7 +51,7 @@ public class Demo05 : IDemo, IDrawUpdate
 
     public void Build(Playground pg, World world)
     {
-        tm = pg.CSMRenderer.GetInstance<Dust>();
+        tm = pg.GetDrawable<Dust>();
 
         pg.AddFloor();
 
@@ -66,7 +67,7 @@ public class Demo05 : IDemo, IDrawUpdate
 
     public void DrawUpdate()
     {
-        tm.PushMatrix(Conversion.FromJitter(level), new Vector3(0.35f, 0.35f, 0.35f));
+        tm.Push(Conversion.FromJitter(level), new Vector3(0.35f, 0.35f, 0.35f));
 
         if (debugDraw)
         {

@@ -24,10 +24,10 @@ public class Demo30 : IDemo, IDrawUpdate
 
     private Playground pg = null!;
 
-    private Sphere sphereDrawer = null!;
-    private Cube boxDrawer = null!;
-    private Cylinder cylinderDrawer = null!;
-    private HalfSphere halfSphereDrawer = null!;
+    private SphereDrawable sphereDrawer = null!;
+    private CubeDrawable boxDrawer = null!;
+    private CylinderDrawable cylinderDrawer = null!;
+    private HalfSphereDrawable halfSphereDrawer = null!;
 
     private CastKind castKind = CastKind.Sphere;
 
@@ -41,10 +41,10 @@ public class Demo30 : IDemo, IDrawUpdate
     {
         this.pg = pg;
 
-        sphereDrawer = pg.CSMRenderer.GetInstance<Sphere>();
-        boxDrawer = pg.CSMRenderer.GetInstance<Cube>();
-        cylinderDrawer = pg.CSMRenderer.GetInstance<Cylinder>();
-        halfSphereDrawer = pg.CSMRenderer.GetInstance<HalfSphere>();
+        sphereDrawer = pg.Spheres;
+        boxDrawer = pg.Cubes;
+        cylinderDrawer = pg.Cylinders;
+        halfSphereDrawer = pg.HalfSpheres;
 
         pg.AddFloor();
 
@@ -77,28 +77,28 @@ public class Demo30 : IDemo, IDrawUpdate
         switch (kind)
         {
             case CastKind.Sphere:
-                sphereDrawer.PushMatrix(mat * MatrixHelper.CreateScale(Radius * 2.0f), color);
+                sphereDrawer.Push(mat * MatrixHelper.CreateScale(Radius * 2.0f), color);
                 break;
 
             case CastKind.Box:
-                boxDrawer.PushMatrix(mat * MatrixHelper.CreateScale(
+                boxDrawer.Push(mat * MatrixHelper.CreateScale(
                     boxHalfExtents.X * 2.0f,
                     boxHalfExtents.Y * 2.0f,
                     boxHalfExtents.Z * 2.0f), color);
                 break;
 
             case CastKind.Capsule:
-                cylinderDrawer.PushMatrix(mat * MatrixHelper.CreateScale(
+                cylinderDrawer.Push(mat * MatrixHelper.CreateScale(
                     Radius, HalfLength * 2.0f, Radius), color);
 
                 Matrix4 cap = MatrixHelper.CreateTranslation(0, HalfLength, 0) *
                               MatrixHelper.CreateScale(Radius * 2.0f);
-                halfSphereDrawer.PushMatrix(mat * cap, color);
-                halfSphereDrawer.PushMatrix(mat * MatrixHelper.CreateRotationX(MathF.PI) * cap, color);
+                halfSphereDrawer.Push(mat * cap, color);
+                halfSphereDrawer.Push(mat * MatrixHelper.CreateRotationX(MathF.PI) * cap, color);
                 break;
 
             case CastKind.Cylinder:
-                cylinderDrawer.PushMatrix(mat * MatrixHelper.CreateScale(
+                cylinderDrawer.Push(mat * MatrixHelper.CreateScale(
                     Radius, HalfHeight * 2.0f, Radius), color);
                 break;
         }

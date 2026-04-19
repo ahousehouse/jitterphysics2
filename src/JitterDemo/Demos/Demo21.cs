@@ -329,7 +329,7 @@ public class Demo21 : IDemo, ICleanDemo, IDrawUpdate
 
         // 2. RENDER PHASE (Main Thread)
         // Submit geometry to the GPU using Instancing
-        var cr = pg.CSMRenderer.GetInstance<Cube>();
+        var cr = pg.Cubes;
 
         for (int x = -RenderRadius; x <= RenderRadius; x++)
         {
@@ -353,7 +353,7 @@ public class Demo21 : IDemo, ICleanDemo, IDrawUpdate
                     foreach (var v in voxels)
                     {
                         Vector3 pos = new Vector3(v.X + 0.5f, v.Y + 0.5f, v.Z + 0.5f);
-                        cr.PushMatrix(MatrixHelper.CreateTranslation(pos), palette[(int)v.Type]);
+                        cr.Push(MatrixHelper.CreateTranslation(pos), palette[(int)v.Type]);
                     }
                 }
             }

@@ -2,23 +2,20 @@ using JitterDemo.Renderer.OpenGL.Native;
 
 namespace JitterDemo.Renderer.OpenGL;
 
-[GLObject(GLObjectType.FrameBuffer)]
-public class FrameBuffer : GLObject
+public sealed class Framebuffer
 {
-    public static readonly FrameBuffer Default = new(0);
+    public uint Handle { get; }
 
-    public FrameBuffer() : base(GL.GenFramebuffer())
+    public Framebuffer()
     {
+        Handle = GL.GenFramebuffer();
     }
 
-    private FrameBuffer(uint fbo) : base(fbo)
-    {
-    }
+    private Framebuffer(uint handle) { Handle = handle; }
 
-    public void Bind()
-    {
-        GL.BindFramebuffer(GLC.FRAMEBUFFER, Handle);
-    }
+    public static readonly Framebuffer Default = new(0);
+
+    public void Bind() => GL.BindFramebuffer(GLC.FRAMEBUFFER, Handle);
 
     public void AttachDepthTexture(Texture2D texture)
     {

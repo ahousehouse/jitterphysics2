@@ -9,21 +9,22 @@ using Jitter2.Dynamics;
 using Jitter2.LinearMath;
 using JitterDemo.Renderer;
 using JitterDemo.Renderer.OpenGL;
-using TriangleMesh = JitterDemo.Renderer.TriangleMesh;
 
 namespace JitterDemo;
 
-public class Dragon : TriangleMesh
+public class Dragon : TriangleMeshDrawable
 {
     public Dragon() : base("dragon.obj.zip", 5)
     {
-    }
-
-    public override void LightPass(PhongShader shader)
-    {
-        shader.MaterialProperties.SetDefaultMaterial();
-        shader.MaterialProperties.ColorMixing.Set(1.2f, 0, 0.5f);
-        base.LightPass(shader);
+        Material = new Material
+        {
+            Tint = Vector3.Zero,
+            Specular = new Vector3(0.1f, 0.1f, 0.1f),
+            Shininess = 128f,
+            Alpha = 1f,
+            VertexColorWeight = 1.2f,
+            TextureWeight = 0.5f
+        };
     }
 }
 
@@ -154,7 +155,7 @@ public class Demo20 : IDemo, ICleanDemo, IDrawUpdate
 
         pg.AddFloor();
 
-        var tm = RenderWindow.Instance.CSMRenderer.GetInstance<Dragon>();
+        var tm = RenderWindow.Instance.GetDrawable<Dragon>();
 
         var indices = tm.Mesh.Indices.Select(i
             => new Octree.TriangleIndices(i.T1, i.T2, i.T3)).ToArray();
@@ -176,8 +177,8 @@ public class Demo20 : IDemo, ICleanDemo, IDrawUpdate
 
     public void DrawUpdate()
     {
-        var tm = RenderWindow.Instance.CSMRenderer.GetInstance<Dragon>();
-        tm.PushMatrix(Matrix4.Identity, new Vector3(0.35f, 0.35f, 0.35f));
+        var tm = RenderWindow.Instance.GetDrawable<Dragon>();
+        tm.Push(Matrix4.Identity, new Vector3(0.35f, 0.35f, 0.35f));
     }
 
     public void CleanUp()
