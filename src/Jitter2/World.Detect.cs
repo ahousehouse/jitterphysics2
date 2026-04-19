@@ -244,9 +244,6 @@ public sealed partial class World
             if (!PersistentContactManifold) arbiter.Handle.Data.UsageMask = 0;
             arbiter.Handle.Data.ResetMode(removeFlags);
 
-            // Cull invalid candidates before reducing to the 4 solver contacts.
-            manifold.ReduceToSolverContacts(normal);
-
             ReadOnlySpan<JVector> manifoldA = manifold.ManifoldA;
             ReadOnlySpan<JVector> manifoldB = manifold.ManifoldB;
 

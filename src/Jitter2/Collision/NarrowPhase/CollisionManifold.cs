@@ -68,36 +68,6 @@ public unsafe struct CollisionManifold
     private static readonly Real[] hexagonVertices = [(Real)1.0, (Real)0.0, (Real)0.5, Sqrt3Over2, -(Real)0.5, Sqrt3Over2,
         -(Real)1.0, (Real)0.0, -(Real)0.5, -Sqrt3Over2, (Real)0.5, -Sqrt3Over2];
 
-    // The solver always keeps 4 contacts. For 5- and 6-point manifolds we can enumerate all
-    // candidate quadrilaterals up front instead of generating combinations on the fly.
-    private static readonly byte[] quadrilateralCombinations5 =
-    [
-        0, 1, 2, 3,
-        0, 1, 2, 4,
-        0, 1, 3, 4,
-        0, 2, 3, 4,
-        1, 2, 3, 4
-    ];
-
-    private static readonly byte[] quadrilateralCombinations6 =
-    [
-        0, 1, 2, 3,
-        0, 1, 2, 4,
-        0, 1, 2, 5,
-        0, 1, 3, 4,
-        0, 1, 3, 5,
-        0, 1, 4, 5,
-        0, 2, 3, 4,
-        0, 2, 3, 5,
-        0, 2, 4, 5,
-        0, 3, 4, 5,
-        1, 2, 3, 4,
-        1, 2, 3, 5,
-        1, 2, 4, 5,
-        1, 3, 4, 5,
-        2, 3, 4, 5
-    ];
-
     /// <summary>
     /// Gets a span of contact points on shape A. Valid indices are <c>[0, Count)</c>.
     /// </summary>
@@ -542,110 +512,21 @@ public unsafe struct CollisionManifold
         return false;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Real CalculateQuadrilateralArea(in JVector p0, in JVector p1, in JVector p2, in JVector p3, in JVector normal)
+    private static int SelectEvenlySpacedIndices(int count, int targetCount, Span<int> selected)
     {
-        JVector diagonalA = p2 - p0;
-        JVector diagonalB = p3 - p1;
-        JVector area = diagonalA % diagonalB;
-        return MathR.Abs(area * normal);
-    }
-
-    [SkipLocalsInit]
-    private static void ReducePolygon(Span<ClipPoint> polygon, ref int count)
-    {
-        if (count <= MaxManifoldPoints) return;
-
-        Span<ClipPoint> reduced = stackalloc ClipPoint[MaxManifoldPoints];
-
-        for (int i = 0; i < MaxManifoldPoints; i++)
+        if (selected.Length < targetCount)
         {
-            int index = ((2 * i + 1) * count) / (2 * MaxManifoldPoints);
-            reduced[i] = polygon[index];
+            throw new ArgumentException($"Selected span must hold at least {targetCount} indices.", nameof(selected));
         }
 
-        reduced.CopyTo(polygon);
-        count = MaxManifoldPoints;
-    }
-
-    private int SelectSolverContacts(in JVector normal, Span<int> selected)
-    {
-        if (selected.Length < SolverContactLimit)
-        {
-            throw new ArgumentException($"Selected span must hold at least {SolverContactLimit} indices.", nameof(selected));
-        }
-
-        if (manifoldCount <= SolverContactLimit)
-        {
-            for (int i = 0; i < manifoldCount; i++)
-            {
-                selected[i] = i;
-            }
-
-            return manifoldCount;
-        }
-
-        ReadOnlySpan<JVector> manifold = ManifoldA;
-        ReadOnlySpan<byte> combinations = manifoldCount switch
-        {
-            5 => quadrilateralCombinations5,
-            6 => quadrilateralCombinations6,
-            _ => throw new InvalidOperationException($"Unexpected manifold count {manifoldCount}.")
-        };
-
-        Real bestArea = Real.MinValue;
-        int best0 = 0, best1 = 1, best2 = 2, best3 = 3;
-
-        for (int i = 0; i < combinations.Length; i += SolverContactLimit)
-        {
-            int i0 = combinations[i + 0];
-            int i1 = combinations[i + 1];
-            int i2 = combinations[i + 2];
-            int i3 = combinations[i + 3];
-
-            Real area = CalculateQuadrilateralArea(manifold[i0], manifold[i1], manifold[i2], manifold[i3], normal);
-
-            if (area <= bestArea) continue;
-
-            bestArea = area;
-            best0 = i0;
-            best1 = i1;
-            best2 = i2;
-            best3 = i3;
-        }
-
-        selected[0] = best0;
-        selected[1] = best1;
-        selected[2] = best2;
-        selected[3] = best3;
-
-        return SolverContactLimit;
-    }
-
-    // Keep only the 4 contacts that span the largest area in the contact plane.
-    [SkipLocalsInit]
-    internal void ReduceToSolverContacts(in JVector normal)
-    {
-        if (manifoldCount <= SolverContactLimit) return;
-
-        Span<int> selected = stackalloc int[SolverContactLimit];
-        int selectedCount = SelectSolverContacts(normal, selected);
-
-        Span<JVector> manifoldA = ManifoldA;
-        Span<JVector> manifoldB = ManifoldB;
-        Span<JVector> reducedA = stackalloc JVector[SolverContactLimit];
-        Span<JVector> reducedB = stackalloc JVector[SolverContactLimit];
+        int selectedCount = Math.Min(count, targetCount);
 
         for (int i = 0; i < selectedCount; i++)
         {
-            int index = selected[i];
-            reducedA[i] = manifoldA[index];
-            reducedB[i] = manifoldB[index];
+            selected[i] = ((2 * i + 1) * count) / (2 * selectedCount);
         }
 
-        reducedA[..selectedCount].CopyTo(manifoldA);
-        reducedB[..selectedCount].CopyTo(manifoldB);
-        manifoldCount = selectedCount;
+        return selectedCount;
     }
 
     /// <summary>
@@ -749,19 +630,22 @@ public unsafe struct CollisionManifold
                     sideEpsilon, distanceEpsilonSq, areaEpsilon, clipped, out clippedCount);
             }
 
-            CompactPolygon(clipped, ref clippedCount, distanceEpsilonSq, areaEpsilon);
-            ReducePolygon(clipped, ref clippedCount);
-
             Real depth = JVector.Dot(pB - pA, normal);
             JVector depthNormal = depth * normal;
 
-            for (int i = 0; i < clippedCount; i++)
-            {
-                JVector pointOnA = LiftFromPlane(clipped[i], pA, crossVector1, crossVector2);
-                mA[manifoldCount] = pointOnA;
-                mB[manifoldCount++] = pointOnA + depthNormal;
+            CompactPolygon(clipped, ref clippedCount, distanceEpsilonSq, areaEpsilon);
 
-                if (manifoldCount == MaxManifoldPoints) return;
+            if (clippedCount > 0)
+            {
+                Span<int> selected = stackalloc int[SolverContactLimit];
+                int selectedCount = SelectEvenlySpacedIndices(clippedCount, SolverContactLimit, selected);
+
+                for (int i = 0; i < selectedCount; i++)
+                {
+                    JVector pointOnA = LiftFromPlane(clipped[selected[i]], pA, crossVector1, crossVector2);
+                    mA[manifoldCount] = pointOnA;
+                    mB[manifoldCount++] = pointOnA + depthNormal;
+                }
             }
         }
 
