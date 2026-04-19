@@ -147,6 +147,7 @@ public unsafe struct CollisionManifold
         right[rightCount++] = v;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Real Cross2D(in ClipPoint left, in ClipPoint right)
     {
         return left.X * right.Y - left.Y * right.X;
@@ -164,12 +165,14 @@ public unsafe struct CollisionManifold
         clippedCount = 2;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ClipPoint ProjectToPlane(in JVector point, in JVector origin, in JVector tangent1, in JVector tangent2)
     {
         JVector delta = point - origin;
         return new ClipPoint(JVector.Dot(delta, tangent1), JVector.Dot(delta, tangent2));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static JVector LiftFromPlane(in ClipPoint point, in JVector origin, in JVector tangent1, in JVector tangent2)
     {
         return origin + point.X * tangent1 + point.Y * tangent2;
@@ -181,11 +184,13 @@ public unsafe struct CollisionManifold
 
         Real area = (Real)0.0;
 
+        ClipPoint previous = polygon[count - 1];
+
         for (int i = 0; i < count; i++)
         {
             ClipPoint current = polygon[i];
-            ClipPoint next = polygon[(i + 1) % count];
-            area += Cross2D(current, next);
+            area += Cross2D(previous, current);
+            previous = current;
         }
 
         return area;
@@ -286,6 +291,7 @@ public unsafe struct CollisionManifold
         while (removed && count >= 3);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Real SideOfEdge(in ClipPoint edgeStart, in ClipPoint edgeEnd, in ClipPoint point)
     {
         return Cross2D(edgeEnd - edgeStart, point - edgeStart);
@@ -536,14 +542,13 @@ public unsafe struct CollisionManifold
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Real CalculateQuadrilateralArea(in JVector p0, in JVector p1, in JVector p2, in JVector p3, in JVector normal)
     {
-        JVector area = p0 % p1;
-        area += p1 % p2;
-        area += p2 % p3;
-        area += p3 % p0;
-
-        return MathR.Abs(JVector.Dot(area, normal));
+        JVector diagonalA = p2 - p0;
+        JVector diagonalB = p3 - p1;
+        JVector area = diagonalA % diagonalB;
+        return MathR.Abs(area * normal);
     }
 
     [SkipLocalsInit]
@@ -748,12 +753,13 @@ public unsafe struct CollisionManifold
             ReducePolygon(clipped, ref clippedCount);
 
             Real depth = JVector.Dot(pB - pA, normal);
+            JVector depthNormal = depth * normal;
 
             for (int i = 0; i < clippedCount; i++)
             {
                 JVector pointOnA = LiftFromPlane(clipped[i], pA, crossVector1, crossVector2);
                 mA[manifoldCount] = pointOnA;
-                mB[manifoldCount++] = pointOnA + depth * normal;
+                mB[manifoldCount++] = pointOnA + depthNormal;
 
                 if (manifoldCount == MaxManifoldPoints) return;
             }
