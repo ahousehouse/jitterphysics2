@@ -1,26 +1,3 @@
-/* Copyright <2022> <Thorben Linneweber>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- *
- */
-
-using System.Runtime.CompilerServices;
 using JitterDemo.Renderer.OpenGL.Native;
 
 namespace JitterDemo.Renderer.OpenGL;
@@ -46,32 +23,22 @@ public enum IndexType : uint
 
 public enum ClearFlags : uint
 {
-    ColorBuffer = GLC.COLOR_BUFFER_BIT,
-    DepthBuffer = GLC.DEPTH_BUFFER_BIT,
-    StencilBuffer = GLC.STENCIL_BUFFER_BIT
+    Color = GLC.COLOR_BUFFER_BIT,
+    Depth = GLC.DEPTH_BUFFER_BIT,
+    Stencil = GLC.STENCIL_BUFFER_BIT,
+    ColorAndDepth = Color | Depth
 }
 
-public enum BlendFunction : uint
+public enum BlendFunc : uint
 {
     Zero = GLC.ZERO,
     One = GLC.ONE,
-    SourceColor = GLC.SRC_COLOR,
-    OneMinusSourceColor = GLC.ONE_MINUS_SRC_COLOR,
-    DestinationColor = GLC.DST_COLOR,
-    OneMinusDestinationColor = GLC.ONE_MINUS_DST_COLOR,
-    SourceAlpha = GLC.SRC_ALPHA,
-    OneMinusSourceAlpha = GLC.ONE_MINUS_SRC_ALPHA,
-    DestinationAlpha = GLC.DST_ALPHA,
-    OneMinusDestinationAlpha = GLC.ONE_MINUS_DST_ALPHA,
-    ConstantColor = GLC.CONSTANT_COLOR,
-    OneMinusConstantColor = GLC.ONE_MINUS_CONSTANT_COLOR,
-    ConstantAlpha = GLC.CONSTANT_ALPHA,
-    OneMinusConstantAlpha = GLC.ONE_MINUS_CONSTANT_ALPHA,
-    SourceAlphaSaturate = GLC.SRC_ALPHA_SATURATE,
-    Source1Color = GLC.SRC1_COLOR,
-    OneMinusSource1Color = GLC.ONE_MINUS_SRC1_COLOR,
-    Source1Alpha = GLC.SRC1_ALPHA,
-    OneMinusSource1 = GLC.ONE_MINUS_SRC1_ALPHA
+    SrcAlpha = GLC.SRC_ALPHA,
+    OneMinusSrcAlpha = GLC.ONE_MINUS_SRC_ALPHA,
+    SrcColor = GLC.SRC_COLOR,
+    DstAlpha = GLC.DST_ALPHA,
+    DstColor = GLC.DST_COLOR,
+    OneMinusSrcColor = GLC.ONE_MINUS_SRC_COLOR
 }
 
 public enum Capability : uint
@@ -84,91 +51,29 @@ public enum Capability : uint
 
 public static class GLDevice
 {
-    static GLDevice()
-    {
-        // make sure the "default" instances are registered
-        RuntimeHelpers.RunClassConstructor(typeof(FrameBuffer).TypeHandle);
-    }
+    public static void Clear(ClearFlags flags) => GL.Clear((uint)flags);
+    public static void ClearColor(float r, float g, float b, float a) => GL.ClearColor(r, g, b, a);
 
-    public static ShaderProgram ActiveShaderProgram
-    {
-        get
-        {
-            uint active = (uint)GL.GetIntegerv(GLC.CURRENT_PROGRAM);
-            return GLObject.Retrieve<ShaderProgram>(active);
-        }
-    }
+    public static void Enable(Capability cap) => GL.Enable((uint)cap);
+    public static void Disable(Capability cap) => GL.Disable((uint)cap);
 
-    public static FrameBuffer ActiveFrameBuffer
-    {
-        get
-        {
-            uint active = (uint)GL.GetIntegerv(GLC.DRAW_FRAMEBUFFER_BINDING);
-            return GLObject.Retrieve<FrameBuffer>(active);
-        }
-    }
+    public static void CullFace(CullMode mode) => GL.CullFace((uint)mode);
+    public static void Viewport(int x, int y, int w, int h) => GL.Viewport(x, y, w, h);
+    public static void Blend(BlendFunc src, BlendFunc dst) => GL.BlendFunc((uint)src, (uint)dst);
 
-    public static Texture2D ActiveTexture2D
-    {
-        get
-        {
-            uint active = (uint)GL.GetIntegerv(GLC.TEXTURE_BINDING_2D);
-            return GLObject.Retrieve<Texture2D>(active);
-        }
-    }
-
-    public static void DrawElementsInstanced(DrawMode mode, int count, IndexType type, int start, int num)
-    {
-        GL.DrawElementsInstanced((uint)mode, count, (uint)type, start, num);
-    }
-
-    public static void DrawElementsBaseVertex(DrawMode mode, int count, IndexType type, int start, int baseVertex)
-    {
-        GL.DrawElementsBaseVertex((uint)mode, count, (uint)type, start, baseVertex);
-    }
-
-    public static void DrawElements(DrawMode mode, int count, IndexType type, int start)
-    {
-        GL.DrawElements((uint)mode, count, (uint)type, start);
-    }
+    public static void DepthMask(bool write) => GL.DepthMask(write);
 
     public static void DrawArrays(DrawMode mode, int first, int count)
-    {
-        GL.DrawArrays((uint)mode, first, count);
-    }
+        => GL.DrawArrays((uint)mode, first, count);
 
-    public static void Clear(ClearFlags flags)
-    {
-        GL.Clear((uint)flags);
-    }
+    public static void DrawElements(DrawMode mode, int count, IndexType type, int offsetBytes)
+        => GL.DrawElements((uint)mode, count, (uint)type, offsetBytes);
 
-    public static void SetCullFaceMode(CullMode cullMode)
-    {
-        GL.CullFace((uint)cullMode);
-    }
+    public static void DrawElementsInstanced(DrawMode mode, int count, IndexType type, int offsetBytes, int instances)
+        => GL.DrawElementsInstanced((uint)mode, count, (uint)type, offsetBytes, instances);
 
-    public static void SetViewport(int x, int y, int width, int height)
-    {
-        GL.Viewport(x, y, width, height);
-    }
+    public static void DrawElementsBaseVertex(DrawMode mode, int count, IndexType type, int offsetBytes, int baseVertex)
+        => GL.DrawElementsBaseVertex((uint)mode, count, (uint)type, offsetBytes, baseVertex);
 
-    public static void SetBlendFunction(BlendFunction sfactor, BlendFunction dfactor)
-    {
-        GL.BlendFunc((uint)sfactor, (uint)dfactor);
-    }
-
-    public static void Enable(Capability capability)
-    {
-        GL.Enable((uint)capability);
-    }
-
-    public static void Disable(Capability capability)
-    {
-        GL.Disable((uint)capability);
-    }
-
-    public static void SetClearColor(float r, float g, float b, float a)
-    {
-        GL.ClearColor(r, g, b, a);
-    }
+    public static void Scissor(int x, int y, int w, int h) => GL.Scissor(x, y, w, h);
 }

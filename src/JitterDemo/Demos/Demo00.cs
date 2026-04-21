@@ -1,14 +1,23 @@
-using System.IO;
 using Jitter2;
 using Jitter2.LinearMath;
 using JitterDemo.Renderer;
 
 namespace JitterDemo;
 
-public class DecomposedTeapot : MultiMesh
+public class DecomposedTeapot : TriangleMeshDrawable
 {
-    public DecomposedTeapot() : base(Path.Combine("assets", "teapot_hull.obj"), 0.03f)
+    public DecomposedTeapot() : base("teapot_hull.obj", 0.03f)
     {
+        // Give every convex hull in the OBJ its own palette entry so the pieces
+        // of each teapot read as distinct against the black instance color.
+        Groups = new MaterialSlot[Mesh.Groups.Length];
+        for (int i = 0; i < Groups.Length; i++)
+        {
+            var m = Material.Default;
+            m.Tint = ColorGenerator.GetColor(i * (i << 6));
+            m.VertexColorWeight = 0f;
+            Groups[i] = new MaterialSlot(i, m);
+        }
     }
 }
 

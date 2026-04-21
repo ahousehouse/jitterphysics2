@@ -15,20 +15,58 @@ public class RigidBodyTag(bool doNotDraw = true)
     public bool DoNotDraw { get; set; } = doNotDraw;
 }
 
+// Built-in primitive drawables. Subclassing is the simplest way to key them in
+// the RenderWindow's Type-based registry and to configure per-shape material bits.
+public sealed class CubeDrawable() : InstancedDrawable(Mesh.Cube());
+public sealed class SphereDrawable() : InstancedDrawable(Mesh.Sphere());
+public sealed class ConeDrawable() : InstancedDrawable(Mesh.Cone());
+public sealed class CylinderDrawable() : InstancedDrawable(Mesh.Cylinder());
+public sealed class HalfSphereDrawable() : InstancedDrawable(Mesh.HalfSphere());
+
+public sealed class FloorDrawable : InstancedDrawable
+{
+    public FloorDrawable() : base(Mesh.Quad(halfSize: 100, uvScale: 100))
+    {
+        var texture = new Texture2D();
+        Image.LoadImage(System.IO.Path.Combine("assets", "unit.tga"))
+             .FixedData((img, ptr) => texture.LoadImage(ptr, img.Width, img.Height));
+        texture.SetWrap(TextureWrap.Repeat);
+        texture.SetAnisotropy(Anisotropy.X8);
+
+        Material = new Material
+        {
+            Tint = Vector3.Zero,
+            Specular = new Vector3(0.1f, 0.1f, 0.1f),
+            Shininess = 10f,
+            Alpha = 1f,
+            VertexColorWeight = 0f,
+            TextureWeight = 1f,
+            Texture = texture
+        };
+    }
+}
+
 public partial class Playground : RenderWindow
 {
     private readonly World world;
 
-    private const float PhysicsTimestep = 1.0f / 100.0f;
+    private const float PhysicsTimestep = 1f / 100f;
     private bool multiThread = true;
     private RigidBodyShape? floorShape;
 
-    private CSMInstance sphereDrawer = null!;
-    private CSMInstance boxDrawer = null!;
-    private CSMInstance coneDrawer = null!;
-    private CSMInstance cylinderDrawer = null!;
-    private CSMInstance halfSphereDrawer = null!;
-    private CSMInstance floorDrawer = null!;
+    private CubeDrawable cubes = null!;
+    private SphereDrawable spheres = null!;
+    private ConeDrawable cones = null!;
+    private CylinderDrawable cylinders = null!;
+    private HalfSphereDrawable halfSpheres = null!;
+    private FloorDrawable floor = null!;
+
+    public CubeDrawable Cubes => cubes;
+    public SphereDrawable Spheres => spheres;
+    public ConeDrawable Cones => cones;
+    public CylinderDrawable Cylinders => cylinders;
+    public HalfSphereDrawable HalfSpheres => halfSpheres;
+    public FloorDrawable Floor => floor;
 
     private readonly List<IDemo> demos = new()
     {
@@ -109,12 +147,12 @@ public partial class Playground : RenderWindow
         ResetScene();
         AddFloor();
 
-        sphereDrawer = CSMRenderer.GetInstance<Sphere>();
-        boxDrawer = CSMRenderer.GetInstance<Cube>();
-        coneDrawer = CSMRenderer.GetInstance<Cone>();
-        cylinderDrawer = CSMRenderer.GetInstance<Cylinder>();
-        halfSphereDrawer = CSMRenderer.GetInstance<HalfSphere>();
-        floorDrawer = CSMRenderer.GetInstance<JitterFloor>();
+        cubes = GetDrawable<CubeDrawable>();
+        spheres = GetDrawable<SphereDrawable>();
+        cones = GetDrawable<ConeDrawable>();
+        cylinders = GetDrawable<CylinderDrawable>();
+        halfSpheres = GetDrawable<HalfSphereDrawable>();
+        floor = GetDrawable<FloorDrawable>();
 
         VerticalSync = false;
     }
@@ -125,7 +163,7 @@ public partial class Playground : RenderWindow
 
     public void ShootPrimitive()
     {
-        const float primitiveVelocity = 20.0f;
+        const float primitiveVelocity = 20f;
 
         var pos = Camera.Position;
         var dir = Camera.Direction;
@@ -146,26 +184,26 @@ public partial class Playground : RenderWindow
         {
             case BoxShape s:
                 ms = MatrixHelper.CreateScale(s.Size.X, s.Size.Y, s.Size.Z);
-                boxDrawer.PushMatrix(mat * ms, color);
+                cubes.Push(mat * ms, color);
                 break;
             case SphereShape s:
                 ms = MatrixHelper.CreateScale(s.Radius * 2);
-                sphereDrawer.PushMatrix(mat * ms, color);
+                spheres.Push(mat * ms, color);
                 break;
             case CylinderShape s:
                 ms = MatrixHelper.CreateScale(s.Radius, s.Height, s.Radius);
-                cylinderDrawer.PushMatrix(mat * ms, color);
+                cylinders.Push(mat * ms, color);
                 break;
             case CapsuleShape s:
                 ms = MatrixHelper.CreateScale(s.Radius, s.Length, s.Radius);
-                cylinderDrawer.PushMatrix(mat * ms, color);
+                cylinders.Push(mat * ms, color);
                 ms = MatrixHelper.CreateTranslation(0, 0.5f * s.Length, 0) * MatrixHelper.CreateScale(s.Radius * 2);
-                halfSphereDrawer.PushMatrix(mat * ms, color);
-                halfSphereDrawer.PushMatrix(mat * MatrixHelper.CreateRotationX(MathF.PI) * ms, color);
+                halfSpheres.Push(mat * ms, color);
+                halfSpheres.Push(mat * MatrixHelper.CreateRotationX(MathF.PI) * ms, color);
                 break;
             case ConeShape s:
                 ms = MatrixHelper.CreateScale(s.Radius * 2, s.Height, s.Radius * 2);
-                coneDrawer.PushMatrix(mat * ms, color);
+                cones.Push(mat * ms, color);
                 break;
         }
     }
@@ -187,7 +225,7 @@ public partial class Playground : RenderWindow
             {
                 if (shape == floorShape)
                 {
-                    floorDrawer.PushMatrix(Matrix4.Identity);
+                    floor.Push(Matrix4.Identity);
                     continue;
                 }
 

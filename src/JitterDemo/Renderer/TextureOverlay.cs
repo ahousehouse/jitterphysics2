@@ -2,56 +2,59 @@ using JitterDemo.Renderer.OpenGL;
 
 namespace JitterDemo.Renderer;
 
-public class TexturedQuad
+/// A screen-space textured quad, handy for overlaying shadow maps or UI previews.
+public sealed class TexturedQuad
 {
-    private readonly VertexArrayObject vao;
-    private readonly QuadShader shader;
+    private readonly Vao vao;
+    private readonly Shader shader;
 
     public Texture2D Texture { get; set; } = null!;
+    public Vector2 Position { get; set; }
+    public Vector2 Size { get; set; }
 
     public TexturedQuad(int width = 200, int height = 200)
     {
-        vao = new VertexArrayObject();
+        Size = new Vector2(width, height);
 
-        ArrayBuffer ab0 = new();
-        vao.ElementArrayBuffer = new ElementArrayBuffer();
+        vao = new Vao();
+        // Bind the VAO up-front so the index-buffer upload below attaches its
+        // EBO to THIS VAO instead of clobbering whichever one was bound before.
+        vao.Bind();
 
-        Vector2[] vertices = new Vector2[4];
-        TriangleVertexIndex[] indices = new TriangleVertexIndex[2];
+        var vbo = GpuBuffer.Vertex();
+        var ebo = GpuBuffer.Index();
 
-        vertices[0] = new Vector2(0, 0);
-        vertices[1] = new Vector2(1, 0);
-        vertices[2] = new Vector2(1, 1);
-        vertices[3] = new Vector2(0, 1);
+        Vector2[] vertices =
+        {
+            new(0, 0), new(1, 0), new(1, 1), new(0, 1)
+        };
+        TriangleVertexIndex[] indices =
+        {
+            new(1, 0, 2), new(2, 0, 3)
+        };
 
-        indices[0] = new TriangleVertexIndex(1, 0, 2);
-        indices[1] = new TriangleVertexIndex(2, 0, 3);
+        vbo.Upload<Vector2>(vertices);
+        ebo.Upload<TriangleVertexIndex>(indices);
 
-        ab0.SetData(vertices);
+        vao.Attrib(0, vbo, 2, AttribType.Float, 2 * sizeof(float), 0);
+        vao.AttachIndexBuffer(ebo);
 
-        vao.ElementArrayBuffer.SetData(indices);
-        vao.VertexAttributes[0].Set(ab0, 2, VertexAttributeType.Float, false, 2 * sizeof(float), 0);
-
-        shader = new QuadShader();
+        shader = new Shader(Vs, Fs);
         shader.Use();
-        shader.Size.Set(width, height);
+        shader.Set("uTexture", 0);
     }
 
-    public Vector2 Position { get; set; }
-
-    public void Draw()
+    public void Draw(int framebufferWidth, int framebufferHeight)
     {
         Texture.Bind(0);
 
         vao.Bind();
         shader.Use();
 
-        (int w, int h) = RenderWindow.Instance.FramebufferSize;
-
-        Matrix4 m = MatrixHelper.CreateOrthographicOffCenter(0.0f, w, h, 0, +1f, -1f);
-
-        shader.Projection.Set(m);
-        shader.Offset.Set(Position);
+        Matrix4 m = MatrixHelper.CreateOrthographicOffCenter(0, framebufferWidth, framebufferHeight, 0, 1f, -1f);
+        shader.Set("uProjection", m);
+        shader.Set("uOffset", Position);
+        shader.Set("uSize", Size);
 
         GLDevice.Enable(Capability.Blend);
         GLDevice.Disable(Capability.DepthTest);
@@ -59,46 +62,30 @@ public class TexturedQuad
         GLDevice.Disable(Capability.Blend);
         GLDevice.Enable(Capability.DepthTest);
     }
-}
 
-public class QuadShader : BasicShader
+    private const string Vs = @"
+#version 330 core
+layout(location = 0) in vec2 aPos;
+
+uniform vec2 uOffset;
+uniform vec2 uSize;
+uniform mat4 uProjection;
+
+out vec2 vUV;
+
+void main()
 {
-    public UniformVector2 Offset { get; }
-    public UniformMatrix4 Projection { get; }
-    public UniformTexture FontTexture { private set; get; }
-    public UniformVector2 Size { get; }
+    gl_Position = uProjection * vec4(aPos * uSize + uOffset, 0.0, 1.0);
+    vUV = aPos;
+}
+";
 
-    public QuadShader() : base(vshader, fshader)
-    {
-        Offset = GetUniform<UniformVector2>("offset");
-        Projection = GetUniform<UniformMatrix4>("projection");
-        Size = GetUniform<UniformVector2>("size");
-        FontTexture = GetUniform<UniformTexture>("fontTexture");
-    }
+    private const string Fs = @"
+#version 330 core
+uniform sampler2D uTexture;
+in vec2 vUV;
+out vec4 FragColor;
 
-    private static readonly string vshader = @"
-        #version 330 core
-        layout (location = 0) in vec2 aPos;
-        uniform vec2 offset;
-        uniform vec2 size;
-        uniform mat4 projection;
-        out vec2 TexCoord;
-        void main()
-        {
-            gl_Position = projection * vec4(vec3(aPos * size + offset, 1 ), 1);
-            TexCoord=vec2(aPos.x , aPos.y) ;
-        }
-        ";
-
-    private static readonly string fshader = @"
-        #version 330 core
-        uniform sampler2D fontTexture;
-        in vec2 TexCoord;
-        out vec4 FragColor;
-        void main()
-        {
-            vec2 tc = TexCoord;
-            FragColor = texture(fontTexture, tc);
-        }
-        ";
+void main() { FragColor = texture(uTexture, vUV); }
+";
 }

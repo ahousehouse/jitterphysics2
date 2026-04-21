@@ -9,7 +9,7 @@ using JitterDemo.Renderer.OpenGL;
 
 namespace JitterDemo;
 
-public class ConvexDecomposition<T> where T : MultiMesh, new()
+public class ConvexDecomposition<T> where T : TriangleMeshDrawable, new()
 {
     private readonly World world;
     private readonly List<RigidBody> bodies = new();
@@ -40,10 +40,10 @@ public class ConvexDecomposition<T> where T : MultiMesh, new()
 
     public void Load()
     {
-        var csmInstance = RenderWindow.Instance.CSMRenderer.GetInstance<T>();
-        Mesh mesh = csmInstance.mesh;
+        var drawable = RenderWindow.Instance.GetDrawable<T>();
+        Mesh mesh = drawable.Mesh;
 
-        float totalMass = 0.0f;
+        float totalMass = 0f;
 
         foreach (var group in mesh.Groups)
         {
@@ -71,7 +71,7 @@ public class ConvexDecomposition<T> where T : MultiMesh, new()
             shapesToAdd.Add(chs);
         }
 
-        com *= 1.0f / totalMass;
+        com *= 1f / totalMass;
 
         foreach (ConvexHullShape s in shapesToAdd)
         {
@@ -86,12 +86,12 @@ public class ConvexDecomposition<T> where T : MultiMesh, new()
 
     public void PushMatrices()
     {
-        var csmInstance = RenderWindow.Instance.CSMRenderer.GetInstance<T>();
+        var drawable = RenderWindow.Instance.GetDrawable<T>();
 
         foreach (RigidBody body in bodies)
         {
             var mat = Conversion.FromJitter(body);
-            csmInstance.PushMatrix(mat * MatrixHelper.CreateTranslation(Conversion.FromJitter(-com)), Vector3.Zero);
+            drawable.Push(mat * MatrixHelper.CreateTranslation(Conversion.FromJitter(-com)), Vector3.Zero);
         }
     }
 }

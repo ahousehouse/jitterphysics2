@@ -6,19 +6,12 @@ using Jitter2.Dynamics;
 using Jitter2.LinearMath;
 using JitterDemo.Renderer;
 using JitterDemo.Renderer.OpenGL;
-using TriangleMesh = JitterDemo.Renderer.TriangleMesh;
 
 namespace JitterDemo;
 
-public class Teapot : TriangleMesh
+public class Teapot : TriangleMeshDrawable
 {
-    public Teapot() : base("teapot.obj.zip", 1.0f) { }
-
-    public override void LightPass(PhongShader shader)
-    {
-        shader.MaterialProperties.SetDefaultMaterial();
-        base.LightPass(shader);
-    }
+    public Teapot() : base("teapot.obj.zip", 1f) { }
 }
 
 public class Demo24 : IDemo, IDrawUpdate
@@ -26,7 +19,7 @@ public class Demo24 : IDemo, IDrawUpdate
     public string Name => "Convex PointCloudShape";
     public string Description => "Convex hull collision shape created from sampled teapot vertices.";
 
-    private TriangleMesh teapot = null!;
+    private Teapot teapot = null!;
     private List<RigidBody> teapotBodies = null!;
     private Matrix4 shift;
 
@@ -36,7 +29,7 @@ public class Demo24 : IDemo, IDrawUpdate
 
         teapotBodies = new List<RigidBody>();
 
-        teapot = RenderWindow.Instance.CSMRenderer.GetInstance<Teapot>();
+        teapot = RenderWindow.Instance.GetDrawable<Teapot>();
 
         var vertices = teapot.Mesh.Vertices.Select(v
             => new JVector(v.Position.X, v.Position.Y, v.Position.Z)).Distinct().ToList();
@@ -75,7 +68,7 @@ public class Demo24 : IDemo, IDrawUpdate
         {
             var color = ColorGenerator.GetColor(body.GetHashCode());
             if (!body.IsActive) color += new Vector3(0.2f, 0.2f, 0.2f);
-            teapot.PushMatrix(Conversion.FromJitter(body) * shift, color);
+            teapot.Push(Conversion.FromJitter(body) * shift, color);
         }
     }
 }

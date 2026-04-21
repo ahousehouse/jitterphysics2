@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Jitter2;
 using Jitter2.Collision.Shapes;
@@ -11,6 +12,34 @@ using JitterDemo.Renderer.OpenGL;
 
 namespace JitterDemo;
 
+internal static class ClothMaterial
+{
+    private static Texture2D? cached;
+
+    public static Material Create()
+    {
+        if (cached == null)
+        {
+            cached = new Texture2D();
+            Image.LoadImage(Path.Combine("assets", "texture_10.tga"))
+                 .FixedData((img, ptr) => cached.LoadImage(ptr, img.Width, img.Height));
+            cached.SetWrap(TextureWrap.Repeat);
+            cached.SetAnisotropy(Anisotropy.X8);
+        }
+
+        return new Material
+        {
+            Tint = Vector3.Zero,
+            Specular = new Vector3(0.1f, 0.1f, 0.1f),
+            Shininess = 128f,
+            Alpha = 1f,
+            VertexColorWeight = 0.1f,
+            TextureWeight = 0.9f,
+            Texture = cached
+        };
+    }
+}
+
 public class Demo17 : IDemo, ICleanDemo, IDrawUpdate
 {
     public string Name => "Cloth";
@@ -20,7 +49,7 @@ public class Demo17 : IDemo, ICleanDemo, IDrawUpdate
     private SoftBodyCloth cloth = null!;
     private World world = null!;
 
-    private Cloth clothRenderer = null!;
+    private MutableMeshDrawable clothRenderer = null!;
 
     public void Build(Playground pg, World world)
     {
@@ -54,8 +83,9 @@ public class Demo17 : IDemo, ICleanDemo, IDrawUpdate
 
         cloth = new SoftBodyCloth(world, tris);
 
-        clothRenderer = pg.CSMRenderer.GetInstance<Cloth>();
-        clothRenderer.SetIndices(cloth.Triangles.ToArray());
+        clothRenderer = pg.GetDrawable<MutableMeshDrawable>();
+        clothRenderer.SetTriangles(cloth.Triangles.ToArray());
+        clothRenderer.Material = ClothMaterial.Create();
         SetUVCoordinates();
 
         var b0 = world.CreateRigidBody();
@@ -94,7 +124,7 @@ public class Demo17 : IDemo, ICleanDemo, IDrawUpdate
 
     private void SetUVCoordinates()
     {
-        var vertices = clothRenderer.Vertices;
+        var vertices = clothRenderer.Mesh.Vertices;
 
         for (int i = 0; i < cloth.Vertices.Count; i++)
         {
@@ -105,21 +135,21 @@ public class Demo17 : IDemo, ICleanDemo, IDrawUpdate
 
     private void UpdateRenderVertices()
     {
-        var vertices = clothRenderer.Vertices;
+        var vertices = clothRenderer.Mesh.Vertices;
 
         for (int i = 0; i < cloth.Vertices.Count; i++)
         {
             vertices[i].Position = Conversion.FromJitter(cloth.Vertices[i].Position);
         }
 
-        clothRenderer.VerticesChanged();
+        clothRenderer.RefreshGeometry();
     }
 
 
     public void DrawUpdate()
     {
         UpdateRenderVertices();
-        clothRenderer.PushMatrix(Matrix4.Identity, Vector3.UnitY);
+        clothRenderer.Push(Matrix4.Identity, Vector3.UnitY);
     }
 
     public void CleanUp()

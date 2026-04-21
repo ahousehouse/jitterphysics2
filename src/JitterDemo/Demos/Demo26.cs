@@ -47,9 +47,9 @@ public class Demo26 : IDemo, IDrawUpdate
         if(kb.IsKeyDown(Keyboard.Key.O)) position += new JVector(0,0,0.01f);
         if(kb.IsKeyDown(Keyboard.Key.P)) position -= new JVector(0,0,0.01f);
 
-        var cr = pg.CSMRenderer.GetInstance<Cube>();
+        var cr = pg.Cubes;
 
-        cr.PushMatrix(MatrixHelper.CreateScale(10, 10, 0.1f), new Vector3(0.2f, 0.2f, 0.2f));
+        cr.Push(MatrixHelper.CreateScale(10, 10, 0.1f), new Vector3(0.2f, 0.2f, 0.2f));
 
         bool res = NarrowPhase.Sweep(staticBar, dynamicBox, JQuaternion.Identity, JQuaternion.Identity,
             JVector.Zero, position,
@@ -60,7 +60,7 @@ public class Demo26 : IDemo, IDrawUpdate
 
         for (int i = 0; i <= 10; i++)
         {
-            cr.PushMatrix(CreateMatrix(position, velocity, angularVelocity, i * 0.1f * lambda),
+            cr.Push(CreateMatrix(position, velocity, angularVelocity, i * 0.1f * lambda),
                 ColorGenerator.GetColor(i*4));
         }
 
