@@ -14,8 +14,6 @@ Provenance:
 The FindBestGreedy method is adapted from Box2D's dynamic_tree.c and is
 marked as modified from the original version.
 
-License notice from source:
-
 MIT License
 
 Copyright (c) 2022 Erin Catto
@@ -49,8 +47,6 @@ Provenance:
 The SolveMpr method is adapted from XenoCollide and is marked as modified
 from the original version.
 
-License notice from source:
-
 XenoCollide Collision Detection and Physics Library
 Copyright (c) 2007-2014 Gary Snethen http://xenocollide.com
 
@@ -79,8 +75,6 @@ src/Jitter2/Dynamics/Contact.cs
 Provenance:
 The contact caching code is described in source as heavily influenced by /
 a direct copy of Bullet's b3ContactCache.cpp.
-
-License notice from source:
 
 Bullet Continuous Collision Detection and Physics Library Copyright (c)
 2003-2006 Erwin Coumans  https://bulletphysics.org
