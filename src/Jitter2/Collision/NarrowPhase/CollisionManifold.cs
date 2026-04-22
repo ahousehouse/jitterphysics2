@@ -46,14 +46,14 @@ public unsafe struct CollisionManifold
         -(Real)1.0, (Real)0.0, -(Real)0.5, -Sqrt3Over2, (Real)0.5, -Sqrt3Over2];
 
     /// <summary>
-    /// Gets a span of contact points on shape A. Valid indices are <c>[0, Count)</c>.
+    /// Gets the contact points on shape A.
     /// </summary>
-    public Span<JVector> ManifoldA => MemoryMarshal.CreateSpan(ref Unsafe.As<Real, JVector>(ref manifoldData[0]), MaxManifoldPoints);
+    public Span<JVector> ManifoldA => MemoryMarshal.CreateSpan(ref Unsafe.As<Real, JVector>(ref manifoldData[0]), manifoldCount);
 
     /// <summary>
-    /// Gets a span of contact points on shape B. Valid indices are <c>[0, Count)</c>.
+    /// Gets the contact points on shape B.
     /// </summary>
-    public Span<JVector> ManifoldB => MemoryMarshal.CreateSpan(ref Unsafe.As<Real, JVector>(ref manifoldData[MaxManifoldPoints * 3]), MaxManifoldPoints);
+    public Span<JVector> ManifoldB => MemoryMarshal.CreateSpan(ref Unsafe.As<Real, JVector>(ref manifoldData[MaxManifoldPoints * 3]), manifoldCount);
 
     /// <summary>
     /// Gets the number of contact points in the manifold.
