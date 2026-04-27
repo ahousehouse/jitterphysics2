@@ -129,6 +129,9 @@ public static class GLFW
     [DllImport(LIBGLFW, EntryPoint = "glfwGetFramebufferSize", ExactSpelling = true)]
     public static extern void GetFramebufferSize(IntPtr window, ref int width, ref int height);
 
+    [DllImport(LIBGLFW, EntryPoint = "glfwGetWindowContentScale", ExactSpelling = true)]
+    public static extern void GetWindowContentScale(IntPtr window, out float xscale, out float yscale);
+
     [DllImport(LIBGLFW, EntryPoint = "glfwGetWindowFrameSize", ExactSpelling = true)]
     public static extern void GetWindowFrameSize(IntPtr window, ref int left, ref int top, ref int right,
         ref int bottom);
