@@ -85,14 +85,12 @@ public partial class Playground : RenderWindow
     }
 
     private void PrepareCustomOverlayFrame(int logicalWidth, int logicalHeight,
-        int framebufferWidth, int framebufferHeight, float contentScaleX, float contentScaleY)
+        int framebufferWidth, int framebufferHeight)
     {
         var mousePosition = Mouse.Position;
         var logicalMouse = new System.Numerics.Vector2((float)mousePosition.X, (float)mousePosition.Y);
 
-        Gui.TextRasterScale = MathF.Max(contentScaleX, contentScaleY);
-        var frame = new RenderFrameInfo(logicalWidth, logicalHeight, framebufferWidth, framebufferHeight,
-            contentScaleX, contentScaleY);
+        var frame = new RenderFrameInfo(logicalWidth, logicalHeight, framebufferWidth, framebufferHeight);
         Gui.BeginFrame(frame, logicalMouse, BuildUiInputState());
         BuildDemoOverlay(Gui);
 

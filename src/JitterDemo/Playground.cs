@@ -264,11 +264,10 @@ public partial class Playground : RenderWindow
     }
 
     protected override void DrawCustomOverlay(int logicalWidth, int logicalHeight,
-        int framebufferWidth, int framebufferHeight, float contentScaleX, float contentScaleY)
+        int framebufferWidth, int framebufferHeight)
     {
         if (!overlayFramePrepared)
-            PrepareCustomOverlayFrame(logicalWidth, logicalHeight, framebufferWidth, framebufferHeight,
-                contentScaleX, contentScaleY);
+            PrepareCustomOverlayFrame(logicalWidth, logicalHeight, framebufferWidth, framebufferHeight);
 
         Gui.EndFrame();
         overlayFramePrepared = false;
@@ -281,10 +280,8 @@ public partial class Playground : RenderWindow
         world.Step(PhysicsTimestep, multiThread);
 
         UpdateDisplayText();
-        (float contentScaleX, float contentScaleY) = WindowContentScale;
         (int framebufferWidth, int framebufferHeight) = FramebufferSize;
-        PrepareCustomOverlayFrame(Width, Math.Max(1, Height), framebufferWidth, framebufferHeight,
-            contentScaleX, contentScaleY);
+        PrepareCustomOverlayFrame(Width, Math.Max(1, Height), framebufferWidth, framebufferHeight);
 
         foreach (RigidBody body in world.RigidBodies)
         {

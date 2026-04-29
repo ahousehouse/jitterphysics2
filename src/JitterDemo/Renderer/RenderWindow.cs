@@ -83,7 +83,7 @@ public class RenderWindow : GLFWWindow
     }
 
     protected virtual void DrawCustomOverlay(int logicalWidth, int logicalHeight,
-        int framebufferWidth, int framebufferHeight, float contentScaleX, float contentScaleY)
+        int framebufferWidth, int framebufferHeight)
     {
     }
 
@@ -136,8 +136,7 @@ public class RenderWindow : GLFWWindow
         if (Keyboard.IsKeyDown(Keyboard.Key.Escape)) Close();
 
         GuiRenderer.SetFramebufferSize(fbw, fbh);
-        (float contentScaleX, float contentScaleY) = WindowContentScale;
-        DrawCustomOverlay(Width, Math.Max(1, Height), fbw, fbh, contentScaleX, contentScaleY);
+        DrawCustomOverlay(Width, Math.Max(1, Height), fbw, fbh);
 
         WantsCaptureKeyboard = Gui.WantsCaptureKeyboard;
         WantsCaptureMouse = Gui.WantsCaptureMouse;
