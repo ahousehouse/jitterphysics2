@@ -161,7 +161,7 @@ public partial class Playground : RenderWindow
         for (int i = 0; i < physicsTime.Length; i++)
             maxPhysicsTime = MathF.Max(maxPhysicsTime, physicsTime[i]);
 
-        root.Window("stats", "Jitter2 Demo", statsWindowState, 260f, content =>
+        root.Window("Jitter2 Demo", statsWindowState, 260f, content =>
         {
             content.ItemSpacing(0f);
             content.Label($"{fps} fps", color: content.Theme.WindowTitleText);
@@ -186,7 +186,7 @@ public partial class Playground : RenderWindow
                 {
                     var demo = demos[i];
                     var item = popup.MenuItem($"Demo {i:00} - {demo.Name}",
-                        selected: i == selectedDemoIndex, closeOnActivate: true);
+                        selected: i == selectedDemoIndex, closeOnActivate: true, id: i);
                     if (item.Activated)
                         SwitchDemo(i);
 
@@ -194,7 +194,8 @@ public partial class Playground : RenderWindow
                     if (!string.IsNullOrWhiteSpace(tooltip))
                         popup.Tooltip(item, tooltip, maxWidth: 420f);
                 }
-            }, width: content.AvailableWidth, maxPopupHeight: 720f, openOnHover: true, openToSide: true);
+            }, width: content.AvailableWidth, maxPopupHeight: 720f, openOnHover: true, openToSide: true,
+                id: "demo-menu");
             content.Theme.TextPrimary = originalMenuTextColor;
 
             if (!demoMenuHintDismissed && (demoMenu.Hovered || demoMenu.Opened))
@@ -206,7 +207,7 @@ public partial class Playground : RenderWindow
             if (objectsSectionOpen)
             {
                 World.SpanData data = World.RawData;
-                content.Vertical(labels =>
+                content.Column(labels =>
                 {
                     labels.ItemSpacing(1f);
                     TableRow(labels, "Islands", $"{World.Islands.Count}/{World.Islands.ActiveCount}", 82f);
@@ -221,7 +222,7 @@ public partial class Playground : RenderWindow
             content.CollapsingHeader("Options", ref optionsSectionOpen, width: content.AvailableWidth);
             if (optionsSectionOpen)
             {
-                content.Vertical(options =>
+                content.Column(options =>
                 {
                     options.ItemSpacing(4f);
 
@@ -240,7 +241,7 @@ public partial class Playground : RenderWindow
             content.CollapsingHeader("Debug Draw", ref debugDrawSectionOpen, width: content.AvailableWidth);
             if (debugDrawSectionOpen)
             {
-                content.Vertical(debugDraw =>
+                content.Column(debugDraw =>
                 {
                     debugDraw.ItemSpacing(4f);
                     debugDraw.Checkbox("Islands", ref debugDrawIslands);
@@ -252,7 +253,7 @@ public partial class Playground : RenderWindow
             content.CollapsingHeader("Broadphase", ref broadphaseSectionOpen, width: content.AvailableWidth);
             if (broadphaseSectionOpen)
             {
-                content.Vertical(labels =>
+                content.Column(labels =>
                 {
                     labels.ItemSpacing(0f);
                     TableRow(labels, "PairHashSet Size", World.DynamicTree.HashSetInfo.TotalSize.ToString(), 72f);
@@ -264,13 +265,13 @@ public partial class Playground : RenderWindow
                 });
                 
                 content.Spacing(4f);
-                content.Vertical(controls =>
+                content.Column(controls =>
                 {
                     controls.ItemSpacing(4f);
                     controls.Checkbox("Debug draw tree", ref debugDrawTree);
 
-                    if (controls.SliderInt("tree-depth", ref debugDrawTreeDepth, 1, 64, controls.AvailableWidth,
-                        label: "tree depth").Changed)
+                    if (controls.SliderInt("tree depth", ref debugDrawTreeDepth, 1, 64, controls.AvailableWidth,
+                        id: "tree-depth").Changed)
                         debugDrawTree = true;
                 });
                 
@@ -279,7 +280,7 @@ public partial class Playground : RenderWindow
             content.CollapsingHeader("Timings", ref timingsSectionOpen, width: content.AvailableWidth);
             if (timingsSectionOpen)
             {
-                content.Vertical(labels =>
+                content.Column(labels =>
                 {
                     labels.ItemSpacing(0f);
 
@@ -291,7 +292,7 @@ public partial class Playground : RenderWindow
 
                 content.Histogram(physicsTime, content.AvailableWidth, 80f,
                     $"max. {maxPhysicsTime:0.00} ms", scaleMin: 0f);
-                content.Vertical(labels =>
+                content.Column(labels =>
                 {
                     labels.ItemSpacing(0f);
                     labels.Label($"Total: {totalTime:0.00}ms ({(totalTime > 0 ? 1000.0d / totalTime : 0d):0} fps)",
@@ -301,8 +302,8 @@ public partial class Playground : RenderWindow
                 
                 content.Spacing(4f);
                 
-                content.SliderInt("sample-rate", ref samplingRate, 1, 10, content.AvailableWidth,
-                    label: "sampling rate");
+                content.SliderInt("sampling rate", ref samplingRate, 1, 10, content.AvailableWidth,
+                    id: "sample-rate");
             }
 
             content.CollapsingHeader("GC statistics", ref gcSectionOpen, width: content.AvailableWidth);
@@ -310,7 +311,7 @@ public partial class Playground : RenderWindow
             {
                 content.Label(gcText.ToString(), maxWidth: content.AvailableWidth, wrap: TextWrapMode.WordWrap);
             }
-        }, resizable: true, closable: false, header: false);
+        }, resizable: true, closable: false, header: false, id: "stats");
     }
 
     private string BuildDemoTooltip(IDemo demo)
@@ -344,30 +345,30 @@ public partial class Playground : RenderWindow
     {
         const float columnGap = 8f;
 
-        ui.Horizontal(row =>
+        using (ui.Row())
         {
-            row.ItemSpacing(columnGap);
+            ui.ItemSpacing(columnGap);
 
-            float rowWidth = row.AvailableWidth;
+            float rowWidth = ui.AvailableWidth;
             float resolvedValueWidth = MathF.Min(valueWidth, MathF.Max(0f, rowWidth));
             float labelWidth = MathF.Max(0f, rowWidth - resolvedValueWidth - columnGap);
 
-            row.Width(labelWidth, left =>
+            using (ui.FixedWidth(labelWidth))
             {
-                left.Label(label,
-                    maxWidth: left.AvailableWidth,
+                ui.Label(label,
+                    maxWidth: ui.AvailableWidth,
                     overflow: TextOverflowMode.Ellipsis);
-            });
+            }
 
-            row.Width(resolvedValueWidth, right =>
+            using (ui.FixedWidth(resolvedValueWidth))
             {
-                right.Label(value,
-                    color: right.Theme.TextSecondary,
-                    maxWidth: right.AvailableWidth,
+                ui.Label(value,
+                    color: ui.Theme.TextSecondary,
+                    maxWidth: ui.AvailableWidth,
                     overflow: TextOverflowMode.Ellipsis,
-                    width: right.AvailableWidth,
+                    width: ui.AvailableWidth,
                     align: UiAlign.End);
-            });
-        });
+            }
+        }
     }
 }
