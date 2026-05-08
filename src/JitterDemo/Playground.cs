@@ -211,6 +211,7 @@ public partial class Playground : RenderWindow
         Gui.Theme.TreeIndent = 0f;
         Gui.Theme.UseLcdText = true;
         Gui.Theme.SliderBlockWidthFactor = 0.2f;
+        Gui.Theme.SliderFillText = Color.White;
     }
 
     public RigidBodyShape? FloorShape => floorShape;
