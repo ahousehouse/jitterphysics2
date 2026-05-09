@@ -390,6 +390,7 @@ public struct ContactData
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Real CalcArea4Points(in JVector p0, in JVector p1, in JVector p2, in JVector p3)
     {
         JVector a0 = p0 - p1;
@@ -406,59 +407,150 @@ public struct ContactData
         return MathR.Max(MathR.Max(tmp0.LengthSquared(), tmp1.LengthSquared()), tmp2.LengthSquared());
     }
 
-    private void SortCachedPoints(in JVector point1, in JVector point2, in JVector normal)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint SelectCachedPointReplacementMask(
+        Real area0, Real area1, Real area2, Real area3)
     {
-        JVector.Subtract(point1, Body1.Data.Position, out JVector rp1);
-
-        // calculate 4 possible cases areas, and take the biggest area
-        // int maxPenetrationIndex = -1;
-        // Real maxPenetration = penetration;
-
         // always prefer the new point
         const Real epsilon = -(Real)0.0001;
 
         Real biggestArea = 0;
+        uint mask = 0;
+
+        if (area0 > biggestArea + epsilon)
+        {
+            biggestArea = area0;
+            mask = MaskContact0;
+        }
+
+        if (area1 > biggestArea + epsilon)
+        {
+            biggestArea = area1;
+            mask = MaskContact1;
+        }
+
+        if (area2 > biggestArea + epsilon)
+        {
+            biggestArea = area2;
+            mask = MaskContact2;
+        }
+
+        if (area3 > biggestArea + epsilon)
+        {
+            mask = MaskContact3;
+        }
+
+        return mask;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static uint SelectCachedPointReplacementMaskScalar(
+        in JVector newPoint, in JVector contact0, in JVector contact1, in JVector contact2, in JVector contact3)
+    {
+        Real area0 = CalcArea4Points(newPoint, contact1, contact2, contact3);
+        Real area1 = CalcArea4Points(newPoint, contact0, contact2, contact3);
+        Real area2 = CalcArea4Points(newPoint, contact0, contact1, contact3);
+        Real area3 = CalcArea4Points(newPoint, contact0, contact1, contact2);
+
+        return SelectCachedPointReplacementMask(area0, area1, area2, area3);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static VectorReal CrossLengthSquared(
+        VectorReal ax, VectorReal ay, VectorReal az,
+        VectorReal bx, VectorReal by, VectorReal bz)
+    {
+        VectorReal cx = Vector.Subtract(Vector.Multiply(ay, bz), Vector.Multiply(az, by));
+        VectorReal cy = Vector.Subtract(Vector.Multiply(az, bx), Vector.Multiply(ax, bz));
+        VectorReal cz = Vector.Subtract(Vector.Multiply(ax, by), Vector.Multiply(ay, bx));
+
+        return Vector.Add(Vector.Add(Vector.Multiply(cx, cx), Vector.Multiply(cy, cy)), Vector.Multiply(cz, cz));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static uint SelectCachedPointReplacementMaskVectorized(
+        in JVector newPoint, in JVector contact0, in JVector contact1, in JVector contact2, in JVector contact3)
+    {
+        VectorReal p0X = Vector.Create(newPoint.X);
+        VectorReal p0Y = Vector.Create(newPoint.Y);
+        VectorReal p0Z = Vector.Create(newPoint.Z);
+
+        VectorReal p1X = Vector.Create(contact1.X, contact0.X, contact0.X, contact0.X);
+        VectorReal p1Y = Vector.Create(contact1.Y, contact0.Y, contact0.Y, contact0.Y);
+        VectorReal p1Z = Vector.Create(contact1.Z, contact0.Z, contact0.Z, contact0.Z);
+
+        VectorReal p2X = Vector.Create(contact2.X, contact2.X, contact1.X, contact1.X);
+        VectorReal p2Y = Vector.Create(contact2.Y, contact2.Y, contact1.Y, contact1.Y);
+        VectorReal p2Z = Vector.Create(contact2.Z, contact2.Z, contact1.Z, contact1.Z);
+
+        VectorReal p3X = Vector.Create(contact3.X, contact3.X, contact3.X, contact2.X);
+        VectorReal p3Y = Vector.Create(contact3.Y, contact3.Y, contact3.Y, contact2.Y);
+        VectorReal p3Z = Vector.Create(contact3.Z, contact3.Z, contact3.Z, contact2.Z);
+
+        VectorReal a0X = Vector.Subtract(p0X, p1X);
+        VectorReal a0Y = Vector.Subtract(p0Y, p1Y);
+        VectorReal a0Z = Vector.Subtract(p0Z, p1Z);
+
+        VectorReal a1X = Vector.Subtract(p0X, p2X);
+        VectorReal a1Y = Vector.Subtract(p0Y, p2Y);
+        VectorReal a1Z = Vector.Subtract(p0Z, p2Z);
+
+        VectorReal a2X = Vector.Subtract(p0X, p3X);
+        VectorReal a2Y = Vector.Subtract(p0Y, p3Y);
+        VectorReal a2Z = Vector.Subtract(p0Z, p3Z);
+
+        VectorReal b0X = Vector.Subtract(p2X, p3X);
+        VectorReal b0Y = Vector.Subtract(p2Y, p3Y);
+        VectorReal b0Z = Vector.Subtract(p2Z, p3Z);
+
+        VectorReal b1X = Vector.Subtract(p1X, p3X);
+        VectorReal b1Y = Vector.Subtract(p1Y, p3Y);
+        VectorReal b1Z = Vector.Subtract(p1Z, p3Z);
+
+        VectorReal b2X = Vector.Subtract(p1X, p2X);
+        VectorReal b2Y = Vector.Subtract(p1Y, p2Y);
+        VectorReal b2Z = Vector.Subtract(p1Z, p2Z);
+
+        VectorReal area0 = CrossLengthSquared(a0X, a0Y, a0Z, b0X, b0Y, b0Z);
+        VectorReal area1 = CrossLengthSquared(a1X, a1Y, a1Z, b1X, b1Y, b1Z);
+        VectorReal area2 = CrossLengthSquared(a2X, a2Y, a2Z, b2X, b2Y, b2Z);
+        VectorReal areas = Vector.Max(Vector.Max(area0, area1), area2);
+
+        return SelectCachedPointReplacementMask(
+            areas.GetElement(0), areas.GetElement(1), areas.GetElement(2), areas.GetElement(3));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static uint SelectCachedPointReplacementMask(
+        in JVector newPoint, in JVector contact0, in JVector contact1, in JVector contact2, in JVector contact3)
+    {
+        return SelectCachedPointReplacementMaskVectorized(newPoint, contact0, contact1, contact2, contact3);
+    }
+
+    private void SortCachedPoints(in JVector point1, in JVector point2, in JVector normal)
+    {
+        JVector.Subtract(point1, Body1.Data.Position, out JVector rp1);
+
+        uint mask = SelectCachedPointReplacementMask(
+            rp1, Contact0.RelativePosition1, Contact1.RelativePosition1, Contact2.RelativePosition1, Contact3.RelativePosition1);
 
         ref Contact cref = ref Contact0;
-        uint index = 0;
 
-        Real area = CalcArea4Points(rp1, Contact1.RelativePosition1, Contact2.RelativePosition1, Contact3.RelativePosition1);
-
-        if (area > biggestArea + epsilon)
+        if (mask == MaskContact1)
         {
-            biggestArea = area;
-            cref = ref Contact0;
-            index = MaskContact0;
-        }
-
-        area = CalcArea4Points(rp1, Contact0.RelativePosition1, Contact2.RelativePosition1, Contact3.RelativePosition1);
-
-        if (area > biggestArea + epsilon)
-        {
-            biggestArea = area;
             cref = ref Contact1;
-            index = MaskContact1;
         }
-
-        area = CalcArea4Points(rp1, Contact0.RelativePosition1, Contact1.RelativePosition1, Contact3.RelativePosition1);
-
-        if (area > biggestArea + epsilon)
+        else if (mask == MaskContact2)
         {
-            biggestArea = area;
             cref = ref Contact2;
-            index = MaskContact2;
         }
-
-        area = CalcArea4Points(rp1, Contact0.RelativePosition1, Contact1.RelativePosition1, Contact2.RelativePosition1);
-
-        if (area > biggestArea + epsilon)
+        else if (mask == MaskContact3)
         {
             cref = ref Contact3;
-            index = MaskContact3;
         }
 
         cref.Initialize(ref Body1.Data, ref Body2.Data, point1, point2, normal, false, Restitution);
-        UsageMask |= index;
+        UsageMask |= mask;
     }
 
     // ---------------------------------------------------------------------------------------------------------
