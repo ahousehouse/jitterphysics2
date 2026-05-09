@@ -93,7 +93,7 @@ public partial class Playground : RenderWindow
             CollapsingHeaderBg = Color.Transparent,
             CollapsingHeaderBgHover = new Color(72, 118, 188, 64),
             CollapsingHeaderBgPressed = new Color(72, 118, 188, 96),
-            CollapsingHeaderBgOpen = Color.Transparent,
+            CollapsingHeaderBgOpen = new Color(20,20,20, 22),
             CollapsingHeaderPadding = new EdgeInsets(2f, 2f),
             ScrollbarTrack = new Color(80, 80, 80, 150),
             ScrollbarThumb = new Color(40, 40, 40, 150),
@@ -242,7 +242,7 @@ public partial class Playground : RenderWindow
                 for (int i = 0; i < demos.Count; i++)
                 {
                     var demo = demos[i];
-                    var item = popup.MenuItem($"Demo {i:00} - {demo.Name}",
+                    var item = popup.MenuItem($"{MaterialSymbols.ViewInAr} Demo {i:00} - {demo.Name}",
                         selected: i == selectedDemoIndex, closeOnActivate: true, id: i);
                     if (item.Activated)
                         SwitchDemo(i);
@@ -260,7 +260,7 @@ public partial class Playground : RenderWindow
 
             content.Separator();
 
-            content.CollapsingHeader("Objects", ref objectsSectionOpen, width: content.AvailableWidth);
+            content.CollapsingHeader($"{MaterialSymbols.Numbers} Objects", ref objectsSectionOpen, width: content.AvailableWidth);
             if (objectsSectionOpen)
             {
                 World.SpanData data = World.RawData;
@@ -276,7 +276,7 @@ public partial class Playground : RenderWindow
                 });
             }
 
-            content.CollapsingHeader("Options", ref optionsSectionOpen, width: content.AvailableWidth);
+            content.CollapsingHeader($"{MaterialSymbols.Tune} Options", ref optionsSectionOpen, width: content.AvailableWidth);
             if (optionsSectionOpen)
             {
                 content.Column(options =>
@@ -295,7 +295,7 @@ public partial class Playground : RenderWindow
                 });
             }
 
-            content.CollapsingHeader("Debug Draw", ref debugDrawSectionOpen, width: content.AvailableWidth);
+            content.CollapsingHeader($"{MaterialSymbols.Shapes} Debug Draw", ref debugDrawSectionOpen, width: content.AvailableWidth);
             if (debugDrawSectionOpen)
             {
                 content.Column(debugDraw =>
@@ -307,7 +307,7 @@ public partial class Playground : RenderWindow
                 });
             }
 
-            content.CollapsingHeader("Broadphase", ref broadphaseSectionOpen, width: content.AvailableWidth);
+            content.CollapsingHeader($"{MaterialSymbols.AccountTree} Broadphase", ref broadphaseSectionOpen, width: content.AvailableWidth);
             if (broadphaseSectionOpen)
             {
                 content.Column(labels =>
@@ -334,7 +334,7 @@ public partial class Playground : RenderWindow
                 
             }
 
-            content.CollapsingHeader("Timings", ref timingsSectionOpen, width: content.AvailableWidth);
+            content.CollapsingHeader($"{MaterialSymbols.AvgTime} Timings", ref timingsSectionOpen, width: content.AvailableWidth);
             if (timingsSectionOpen)
             {
                 content.Column(labels =>
@@ -363,7 +363,7 @@ public partial class Playground : RenderWindow
                     id: "sample-rate");
             }
 
-            content.CollapsingHeader("GC statistics", ref gcSectionOpen, width: content.AvailableWidth);
+            content.CollapsingHeader($"{MaterialSymbols.Memory} GC statistics", ref gcSectionOpen, width: content.AvailableWidth);
             if (gcSectionOpen)
             {
                 content.Label(gcText.ToString(), maxWidth: content.AvailableWidth, wrap: TextWrapMode.WordWrap);
@@ -388,7 +388,7 @@ public partial class Playground : RenderWindow
     private string BuildDemoMenuLabel()
     {
         if (selectedDemoIndex < 0 || selectedDemoIndex >= demos.Count)
-            return "Select Demo Scene";
+            return $"Select Demo Scene";
 
         const int maxNameLength = 18;
         string name = demos[selectedDemoIndex].Name;
